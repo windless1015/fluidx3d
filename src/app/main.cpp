@@ -1,5 +1,5 @@
 #include "info.hpp"
-#include "lbm.hpp"
+#include "../lbm/lbm.hpp"
 #include "setup.hpp"
 
 #ifdef GRAPHICS

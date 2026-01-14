@@ -1,10 +1,11 @@
 #pragma once
 
-#include "defines.hpp"
-#include "opencl.hpp"
-#include "graphics.hpp"
-#include "units.hpp"
-#include "info.hpp"
+#include "../core/defines.hpp"
+#include "../core/opencl.hpp"
+#include "../render/graphics.hpp"
+#include "../core/units.hpp"
+#include "../app/info.hpp"
+
 
 uint bytes_per_cell_host(); // returns the number of Bytes per cell allocated in host memory
 uint bytes_per_cell_device(); // returns the number of Bytes per cell allocated in device memory

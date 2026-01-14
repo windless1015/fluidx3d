@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utilities.hpp"
+#include "../core/utilities.hpp"
 #include <mutex>
 
 class LBM;

@@ -5,8 +5,8 @@
 //#define INTERACTIVE_GRAPHICS_ASCII
 //#define GRAPHICS
 
-#include "defines.hpp"
-#include "utilities.hpp"
+#include "../core/defines.hpp"
+#include "../core/utilities.hpp"
 #include <atomic>
 #include <mutex>
 

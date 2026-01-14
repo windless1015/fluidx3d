@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utilities.hpp"
+#include "../core/utilities.hpp"
 
 bool sphere(const uint x, const uint y, const uint z, const float3& p, const float r);
 bool ellipsoid(const uint x, const uint y, const uint z, const float3& p, const float3& r);
