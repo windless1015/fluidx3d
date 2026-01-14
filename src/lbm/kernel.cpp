@@ -873,41 +873,16 @@ string opencl_c_container() { return R( // ########################## begin of O
 }
 )+R(float c(const uint i) { // avoid constant keyword by encapsulating data in function which gets inlined by compiler
 	const float c[3u*def_velocity_set] = {
-)+"#if defined(D2Q9)"+R(
-		0, 1,-1, 0, 0, 1,-1, 1,-1, // x
-		0, 0, 0, 1,-1, 1,-1,-1, 1, // y
-		0, 0, 0, 0, 0, 0, 0, 0, 0  // z
-)+"#elif defined(D3Q15)"+R(
-		0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1, 1,-1,-1, 1, // x
-		0, 0, 0, 1,-1, 0, 0, 1,-1, 1,-1,-1, 1, 1,-1, // y
-		0, 0, 0, 0, 0, 1,-1, 1,-1,-1, 1, 1,-1, 1,-1  // z
-)+"#elif defined(D3Q19)"+R(
 		0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1, 0, 0, 1,-1, 1,-1, 0, 0, // x
 		0, 0, 0, 1,-1, 0, 0, 1,-1, 0, 0, 1,-1,-1, 1, 0, 0, 1,-1, // y
 		0, 0, 0, 0, 0, 1,-1, 0, 0, 1,-1, 1,-1, 0, 0,-1, 1,-1, 1  // z
-)+"#elif defined(D3Q27)"+R(
-		0, 1,-1, 0, 0, 0, 0, 1,-1, 1,-1, 0, 0, 1,-1, 1,-1, 0, 0, 1,-1, 1,-1, 1,-1,-1, 1, // x
-		0, 0, 0, 1,-1, 0, 0, 1,-1, 0, 0, 1,-1,-1, 1, 0, 0, 1,-1, 1,-1, 1,-1,-1, 1, 1,-1, // y
-		0, 0, 0, 0, 0, 1,-1, 0, 0, 1,-1, 1,-1, 0, 0,-1, 1,-1, 1, 1,-1,-1, 1, 1,-1, 1,-1  // z
-)+"#endif"+R( // D3Q27
 	};
 	return c[i];
 }
 )+R(float w(const uint i) { // avoid constant keyword by encapsulating data in function which gets inlined by compiler
 	const float w[def_velocity_set] = { def_w0, // velocity set weights
-)+"#if defined(D2Q9)"+R(
-		def_ws, def_ws, def_ws, def_ws, def_we, def_we, def_we, def_we
-)+"#elif defined(D3Q15)"+R(
-		def_ws, def_ws, def_ws, def_ws, def_ws, def_ws,
-		def_wc, def_wc, def_wc, def_wc, def_wc, def_wc, def_wc, def_wc
-)+"#elif defined(D3Q19)"+R(
 		def_ws, def_ws, def_ws, def_ws, def_ws, def_ws,
 		def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we
-)+"#elif defined(D3Q27)"+R(
-		def_ws, def_ws, def_ws, def_ws, def_ws, def_ws,
-		def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we, def_we,
-		def_wc, def_wc, def_wc, def_wc, def_wc, def_wc, def_wc, def_wc
-)+"#endif"+R( // D3Q27
 	};
 	return w[i];
 }
@@ -927,20 +902,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 	uxx x0, xp, xm, y0, yp, ym, z0, zp, zm;
 	calculate_indices(n, &x0, &xp, &xm, &y0, &yp, &ym, &z0, &zp, &zm);
 	j[0] = n;
-)+"#if defined(D2Q9)"+R(
-	j[ 1] = xp+y0; j[ 2] = xm+y0; // +00 -00
-	j[ 3] = x0+yp; j[ 4] = x0+ym; // 0+0 0-0
-	j[ 5] = xp+yp; j[ 6] = xm+ym; // ++0 --0
-	j[ 7] = xp+ym; j[ 8] = xm+yp; // +-0 -+0
-)+"#elif defined(D3Q15)"+R(
-	j[ 1] = xp+y0+z0; j[ 2] = xm+y0+z0; // +00 -00
-	j[ 3] = x0+yp+z0; j[ 4] = x0+ym+z0; // 0+0 0-0
-	j[ 5] = x0+y0+zp; j[ 6] = x0+y0+zm; // 00+ 00-
-	j[ 7] = xp+yp+zp; j[ 8] = xm+ym+zm; // +++ ---
-	j[ 9] = xp+yp+zm; j[10] = xm+ym+zp; // ++- --+
-	j[11] = xp+ym+zp; j[12] = xm+yp+zm; // +-+ -+-
-	j[13] = xm+yp+zp; j[14] = xp+ym+zm; // -++ +--
-)+"#elif defined(D3Q19)"+R(
 	j[ 1] = xp+y0+z0; j[ 2] = xm+y0+z0; // +00 -00
 	j[ 3] = x0+yp+z0; j[ 4] = x0+ym+z0; // 0+0 0-0
 	j[ 5] = x0+y0+zp; j[ 6] = x0+y0+zm; // 00+ 00-
@@ -950,21 +911,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 	j[13] = xp+ym+z0; j[14] = xm+yp+z0; // +-0 -+0
 	j[15] = xp+y0+zm; j[16] = xm+y0+zp; // +0- -0+
 	j[17] = x0+yp+zm; j[18] = x0+ym+zp; // 0+- 0-+
-)+"#elif defined(D3Q27)"+R(
-	j[ 1] = xp+y0+z0; j[ 2] = xm+y0+z0; // +00 -00
-	j[ 3] = x0+yp+z0; j[ 4] = x0+ym+z0; // 0+0 0-0
-	j[ 5] = x0+y0+zp; j[ 6] = x0+y0+zm; // 00+ 00-
-	j[ 7] = xp+yp+z0; j[ 8] = xm+ym+z0; // ++0 --0
-	j[ 9] = xp+y0+zp; j[10] = xm+y0+zm; // +0+ -0-
-	j[11] = x0+yp+zp; j[12] = x0+ym+zm; // 0++ 0--
-	j[13] = xp+ym+z0; j[14] = xm+yp+z0; // +-0 -+0
-	j[15] = xp+y0+zm; j[16] = xm+y0+zp; // +0- -0+
-	j[17] = x0+yp+zm; j[18] = x0+ym+zp; // 0+- 0-+
-	j[19] = xp+yp+zp; j[20] = xm+ym+zm; // +++ ---
-	j[21] = xp+yp+zm; j[22] = xm+ym+zp; // ++- --+
-	j[23] = xp+ym+zp; j[24] = xm+yp+zm; // +-+ -+-
-	j[25] = xm+yp+zp; j[26] = xp+ym+zm; // -++ +--
-)+"#endif"+R( // D3Q27
 } // neighbors()
 
 )+R(float3 load3(const uxx n, const global float* v) {
@@ -990,9 +936,9 @@ string opencl_c_container() { return R( // ########################## begin of O
 	const float duxdx=u0.x-u1.x, duydx=u0.y-u1.y, duzdx=u0.z-u1.z; // du/dx = (u2-u0)/2
 	const float duxdy=u2.x-u3.x, duydy=u2.y-u3.y, duzdy=u2.z-u3.z;
 	const float duxdz=u4.x-u5.x, duydz=u4.y-u5.y, duzdz=u4.z-u5.z;
-	const float omega_xy=duxdy-duydx, omega_xz=duxdz-duzdx, omega_yz=duydz-duzdy; // antisymmetric tensor, omega_xx = omega_yy = omega_zz = 0
+	const float omega_xy=duxdy-duydx, omega_xz=duxdz-duzdx, omega_yz=duydz-duzdz; // antisymmetric tensor, omega_xx = omega_yy = omega_zz = 0
 	const float s_xx2=duxdx, s_yy2=duydy, s_zz2=duzdz; // s_xx2 = s_xx/2, s_yy2 = s_yy/2, s_zz2 = s_zz/2
-	const float s_xy=duxdy+duydx, s_xz=duxdz+duzdx, s_yz=duydz+duzdy; // symmetric tensor
+	const float s_xy=duxdy+duydx, s_xz=duxdz+duzdx, s_yz=duydz+duzdz; // symmetric tensor
 	const float omega2 = sq(omega_xy)+sq(omega_xz)+sq(omega_yz); // ||omega||_2^2
 	const float s2 = 2.0f*(sq(s_xx2)+sq(s_yy2)+sq(s_zz2))+sq(s_xy)+sq(s_xz)+sq(s_yz); // ||s||_2^2
 	return 0.25f*(omega2-s2); // Q = 1/2*(||omega||_2^2-||s||_2^2), addidional factor 1/2 from cental finite differences of velocity
@@ -1009,33 +955,11 @@ string opencl_c_container() { return R( // ########################## begin of O
 
 )+R(void calculate_f_eq(const float rho, float ux, float uy, float uz, float* feq) { // calculate f_equilibrium from density and velocity field (perturbation method / DDF-shifting)
 	const float rhom1 = rho-1.0f; // rhom1 is arithmetic optimization to minimize digit extinction
-)+"#ifndef D2Q9"+R( // 3D
 	const float c3 = -3.0f*(sq(ux)+sq(uy)+sq(uz)); // c3 = -2*sq(u)/(2*sq(c))
 	uz *= 3.0f; // only needed for 3D
-)+"#else"+R( // D2Q9
-	const float c3 = -3.0f*(sq(ux)+sq(uy)); // c3 = -2*sq(u)/(2*sq(c))
-)+"#endif"+R( // D2Q9
 	ux *= 3.0f;
 	uy *= 3.0f;
 	feq[ 0] = def_w0*fma(rho, 0.5f*c3, rhom1); // 000 (identical for all velocity sets)
-)+"#if defined(D2Q9)"+R(
-	const float u0=ux+uy, u1=ux-uy; // these pre-calculations make manual unrolling require less FLOPs
-	const float rhos=def_ws*rho, rhoe=def_we*rho, rhom1s=def_ws*rhom1, rhom1e=def_we*rhom1;
-	feq[ 1] = fma(rhos, fma(0.5f, fma(ux, ux, c3), ux), rhom1s); feq[ 2] = fma(rhos, fma(0.5f, fma(ux, ux, c3), -ux), rhom1s); // +00 -00
-	feq[ 3] = fma(rhos, fma(0.5f, fma(uy, uy, c3), uy), rhom1s); feq[ 4] = fma(rhos, fma(0.5f, fma(uy, uy, c3), -uy), rhom1s); // 0+0 0-0
-	feq[ 5] = fma(rhoe, fma(0.5f, fma(u0, u0, c3), u0), rhom1e); feq[ 6] = fma(rhoe, fma(0.5f, fma(u0, u0, c3), -u0), rhom1e); // ++0 --0
-	feq[ 7] = fma(rhoe, fma(0.5f, fma(u1, u1, c3), u1), rhom1e); feq[ 8] = fma(rhoe, fma(0.5f, fma(u1, u1, c3), -u1), rhom1e); // +-0 -+0
-)+"#elif defined(D3Q15)"+R(
-	const float u0=ux+uy+uz, u1=ux+uy-uz, u2=ux-uy+uz, u3=-ux+uy+uz;
-	const float rhos=def_ws*rho, rhoc=def_wc*rho, rhom1s=def_ws*rhom1, rhom1c=def_wc*rhom1;
-	feq[ 1] = fma(rhos, fma(0.5f, fma(ux, ux, c3), ux), rhom1s); feq[ 2] = fma(rhos, fma(0.5f, fma(ux, ux, c3), -ux), rhom1s); // +00 -00
-	feq[ 3] = fma(rhos, fma(0.5f, fma(uy, uy, c3), uy), rhom1s); feq[ 4] = fma(rhos, fma(0.5f, fma(uy, uy, c3), -uy), rhom1s); // 0+0 0-0
-	feq[ 5] = fma(rhos, fma(0.5f, fma(uz, uz, c3), uz), rhom1s); feq[ 6] = fma(rhos, fma(0.5f, fma(uz, uz, c3), -uz), rhom1s); // 00+ 00-
-	feq[ 7] = fma(rhoc, fma(0.5f, fma(u0, u0, c3), u0), rhom1c); feq[ 8] = fma(rhoc, fma(0.5f, fma(u0, u0, c3), -u0), rhom1c); // +++ ---
-	feq[ 9] = fma(rhoc, fma(0.5f, fma(u1, u1, c3), u1), rhom1c); feq[10] = fma(rhoc, fma(0.5f, fma(u1, u1, c3), -u1), rhom1c); // ++- --+
-	feq[11] = fma(rhoc, fma(0.5f, fma(u2, u2, c3), u2), rhom1c); feq[12] = fma(rhoc, fma(0.5f, fma(u2, u2, c3), -u2), rhom1c); // +-+ -+-
-	feq[13] = fma(rhoc, fma(0.5f, fma(u3, u3, c3), u3), rhom1c); feq[14] = fma(rhoc, fma(0.5f, fma(u3, u3, c3), -u3), rhom1c); // -++ +--
-)+"#elif defined(D3Q19)"+R(
 	const float u0=ux+uy, u1=ux+uz, u2=uy+uz, u3=ux-uy, u4=ux-uz, u5=uy-uz;
 	const float rhos=def_ws*rho, rhoe=def_we*rho, rhom1s=def_ws*rhom1, rhom1e=def_we*rhom1;
 	feq[ 1] = fma(rhos, fma(0.5f, fma(ux, ux, c3), ux), rhom1s); feq[ 2] = fma(rhos, fma(0.5f, fma(ux, ux, c3), -ux), rhom1s); // +00 -00
@@ -1047,46 +971,15 @@ string opencl_c_container() { return R( // ########################## begin of O
 	feq[13] = fma(rhoe, fma(0.5f, fma(u3, u3, c3), u3), rhom1e); feq[14] = fma(rhoe, fma(0.5f, fma(u3, u3, c3), -u3), rhom1e); // +-0 -+0
 	feq[15] = fma(rhoe, fma(0.5f, fma(u4, u4, c3), u4), rhom1e); feq[16] = fma(rhoe, fma(0.5f, fma(u4, u4, c3), -u4), rhom1e); // +0- -0+
 	feq[17] = fma(rhoe, fma(0.5f, fma(u5, u5, c3), u5), rhom1e); feq[18] = fma(rhoe, fma(0.5f, fma(u5, u5, c3), -u5), rhom1e); // 0+- 0-+
-)+"#elif defined(D3Q27)"+R(
-	const float u0=ux+uy, u1=ux+uz, u2=uy+uz, u3=ux-uy, u4=ux-uz, u5=uy-uz, u6=ux+uy+uz, u7=ux+uy-uz, u8=ux-uy+uz, u9=-ux+uy+uz;
-	const float rhos=def_ws*rho, rhoe=def_we*rho, rhoc=def_wc*rho, rhom1s=def_ws*rhom1, rhom1e=def_we*rhom1, rhom1c=def_wc*rhom1;
-	feq[ 1] = fma(rhos, fma(0.5f, fma(ux, ux, c3), ux), rhom1s); feq[ 2] = fma(rhos, fma(0.5f, fma(ux, ux, c3), -ux), rhom1s); // +00 -00
-	feq[ 3] = fma(rhos, fma(0.5f, fma(uy, uy, c3), uy), rhom1s); feq[ 4] = fma(rhos, fma(0.5f, fma(uy, uy, c3), -uy), rhom1s); // 0+0 0-0
-	feq[ 5] = fma(rhos, fma(0.5f, fma(uz, uz, c3), uz), rhom1s); feq[ 6] = fma(rhos, fma(0.5f, fma(uz, uz, c3), -uz), rhom1s); // 00+ 00-
-	feq[ 7] = fma(rhoe, fma(0.5f, fma(u0, u0, c3), u0), rhom1e); feq[ 8] = fma(rhoe, fma(0.5f, fma(u0, u0, c3), -u0), rhom1e); // ++0 --0
-	feq[ 9] = fma(rhoe, fma(0.5f, fma(u1, u1, c3), u1), rhom1e); feq[10] = fma(rhoe, fma(0.5f, fma(u1, u1, c3), -u1), rhom1e); // +0+ -0-
-	feq[11] = fma(rhoe, fma(0.5f, fma(u2, u2, c3), u2), rhom1e); feq[12] = fma(rhoe, fma(0.5f, fma(u2, u2, c3), -u2), rhom1e); // 0++ 0--
-	feq[13] = fma(rhoe, fma(0.5f, fma(u3, u3, c3), u3), rhom1e); feq[14] = fma(rhoe, fma(0.5f, fma(u3, u3, c3), -u3), rhom1e); // +-0 -+0
-	feq[15] = fma(rhoe, fma(0.5f, fma(u4, u4, c3), u4), rhom1e); feq[16] = fma(rhoe, fma(0.5f, fma(u4, u4, c3), -u4), rhom1e); // +0- -0+
-	feq[17] = fma(rhoe, fma(0.5f, fma(u5, u5, c3), u5), rhom1e); feq[18] = fma(rhoe, fma(0.5f, fma(u5, u5, c3), -u5), rhom1e); // 0+- 0-+
-	feq[19] = fma(rhoc, fma(0.5f, fma(u6, u6, c3), u6), rhom1c); feq[20] = fma(rhoc, fma(0.5f, fma(u6, u6, c3), -u6), rhom1c); // +++ ---
-	feq[21] = fma(rhoc, fma(0.5f, fma(u7, u7, c3), u7), rhom1c); feq[22] = fma(rhoc, fma(0.5f, fma(u7, u7, c3), -u7), rhom1c); // ++- --+
-	feq[23] = fma(rhoc, fma(0.5f, fma(u8, u8, c3), u8), rhom1c); feq[24] = fma(rhoc, fma(0.5f, fma(u8, u8, c3), -u8), rhom1c); // +-+ -+-
-	feq[25] = fma(rhoc, fma(0.5f, fma(u9, u9, c3), u9), rhom1c); feq[26] = fma(rhoc, fma(0.5f, fma(u9, u9, c3), -u9), rhom1c); // -++ +--
-)+"#endif"+R( // D3Q27
 } // calculate_f_eq()
 
 )+R(void calculate_rho_u(const float* f, float* rhon, float* uxn, float* uyn, float* uzn) { // calculate density and velocity fields from fi
 	float rho=f[0], ux, uy, uz;
 	for(uint i=1u; i<def_velocity_set; i++) rho += f[i]; // calculate density from fi
 	rho += 1.0f; // add 1.0f last to avoid digit extinction effects when summing up fi (perturbation method / DDF-shifting)
-)+"#if defined(D2Q9)"+R(
-	ux = f[1]-f[2]+f[5]-f[6]+f[7]-f[8]; // calculate velocity from fi (alternating + and - for best accuracy)
-	uy = f[3]-f[4]+f[5]-f[6]+f[8]-f[7];
-	uz = 0.0f;
-)+"#elif defined(D3Q15)"+R(
-	ux = f[ 1]-f[ 2]+f[ 7]-f[ 8]+f[ 9]-f[10]+f[11]-f[12]+f[14]-f[13]; // calculate velocity from fi (alternating + and - for best accuracy)
-	uy = f[ 3]-f[ 4]+f[ 7]-f[ 8]+f[ 9]-f[10]+f[12]-f[11]+f[13]-f[14];
-	uz = f[ 5]-f[ 6]+f[ 7]-f[ 8]+f[10]-f[ 9]+f[11]-f[12]+f[13]-f[14];
-)+"#elif defined(D3Q19)"+R(
 	ux = f[ 1]-f[ 2]+f[ 7]-f[ 8]+f[ 9]-f[10]+f[13]-f[14]+f[15]-f[16]; // calculate velocity from fi (alternating + and - for best accuracy)
 	uy = f[ 3]-f[ 4]+f[ 7]-f[ 8]+f[11]-f[12]+f[14]-f[13]+f[17]-f[18];
 	uz = f[ 5]-f[ 6]+f[ 9]-f[10]+f[11]-f[12]+f[16]-f[15]+f[18]-f[17];
-)+"#elif defined(D3Q27)"+R(
-	ux = f[ 1]-f[ 2]+f[ 7]-f[ 8]+f[ 9]-f[10]+f[13]-f[14]+f[15]-f[16]+f[19]-f[20]+f[21]-f[22]+f[23]-f[24]+f[26]-f[25]; // calculate velocity from fi (alternating + and - for best accuracy)
-	uy = f[ 3]-f[ 4]+f[ 7]-f[ 8]+f[11]-f[12]+f[14]-f[13]+f[17]-f[18]+f[19]-f[20]+f[21]-f[22]+f[24]-f[23]+f[25]-f[26];
-	uz = f[ 5]-f[ 6]+f[ 9]-f[10]+f[11]-f[12]+f[16]-f[15]+f[18]-f[17]+f[19]-f[20]+f[22]-f[21]+f[23]-f[24]+f[25]-f[26];
-)+"#endif"+R( // D3Q27
 	*rhon = rho;
 	*uxn = ux/rho;
 	*uyn = uy/rho;
@@ -1095,11 +988,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 
 )+"#ifdef VOLUME_FORCE"+R(
 )+R(void calculate_forcing_terms(const float ux, const float uy, const float uz, const float fx, const float fy, const float fz, float* Fin) { // calculate volume force terms Fin from velocity field (Guo forcing, Krueger p.233f)
-)+"#ifdef D2Q9"+R(
-	const float uF = -0.33333334f*fma(ux, fx, uy*fy); // 2D
-)+"#else"+R( // D2Q9
 	const float uF = -0.33333334f*fma(ux, fx, fma(uy, fy, uz*fz)); // 3D
-)+"#endif"+R( // D2Q9
 	Fin[0] = 9.0f*def_w0*uF ; // 000 (identical for all velocity sets)
 	for(uint i=1u; i<def_velocity_set; i++) { // loop is entirely unrolled by compiler, no unnecessary FLOPs are happening
 		Fin[i] = 9.0f*w(i)*fma(c(i)*fx+c(def_velocity_set+i)*fy+c(2u*def_velocity_set+i)*fz, c(i)*ux+c(def_velocity_set+i)*uy+c(2u*def_velocity_set+i)*uz+0.33333334f, uF);
@@ -1162,15 +1051,9 @@ string opencl_c_container() { return R( // ########################## begin of O
 }
 )+R(float3 calculate_normal_py(const float* phij) { // calculate surface normal vector (Parker-youngs approximation, more accurate, works only for D3Q27 neighborhood)
 	float3 n; // normal vector
-)+"#ifdef D2Q9"+R(
-	n.x = 2.0f*(phij[2]-phij[1])+phij[6]-phij[5]+phij[8]-phij[7];
-	n.y = 2.0f*(phij[4]-phij[3])+phij[6]-phij[5]+phij[7]-phij[8];
-	n.z = 0.0f;
-)+"#else"+R( // D2Q9
 	n.x = 4.0f*(phij[ 2]-phij[ 1])+2.0f*(phij[ 8]-phij[ 7]+phij[10]-phij[ 9]+phij[14]-phij[13]+phij[16]-phij[15])+phij[20]-phij[19]+phij[22]-phij[21]+phij[24]-phij[23]+phij[25]-phij[26];
 	n.y = 4.0f*(phij[ 4]-phij[ 3])+2.0f*(phij[ 8]-phij[ 7]+phij[12]-phij[11]+phij[13]-phij[14]+phij[18]-phij[17])+phij[20]-phij[19]+phij[22]-phij[21]+phij[23]-phij[24]+phij[26]-phij[25];
 	n.z = 4.0f*(phij[ 6]-phij[ 5])+2.0f*(phij[10]-phij[ 9]+phij[12]-phij[11]+phij[15]-phij[16]+phij[17]-phij[18])+phij[20]-phij[19]+phij[21]-phij[22]+phij[24]-phij[23]+phij[26]-phij[25];
-)+"#endif"+R( // D2Q9
 	return normalize(n);
 }
 )+R(float plic_cube_reduced(const float V, const float n1, const float n2, const float n3) { // optimized solution from SZ and Kawano, source: https://doi.org/10.3390/computation10020021
@@ -2733,7 +2616,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#endif"+R( // TEMPERATURE
 	const uxx n = get_global_id(0);
 	const float3 ps = (float3)((float)slice_x+0.5f-0.5f*(float)def_Nx, (float)slice_y+0.5f-0.5f*(float)def_Ny, (float)slice_z+0.5f-0.5f*(float)def_Nz);
-)+"#ifndef D2Q9"+R(
 	if(n>=(uxx)(def_Nx/def_streamline_sparse)*(uxx)(def_Ny/def_streamline_sparse)*(uxx)(def_Nz/def_streamline_sparse)) return;
 	const uint z = (uint)(n/(uxx)((def_Nx/def_streamline_sparse)*(def_Ny/def_streamline_sparse))); // disassemble 1D index to 3D coordinates
 	const uint t = (uint)(n%(uxx)((def_Nx/def_streamline_sparse)*(def_Ny/def_streamline_sparse)));
@@ -2741,13 +2623,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 	const uint x = (uint)(t%(def_Nx/def_streamline_sparse));
 	float3 p = (float)def_streamline_sparse*((float3)((float)x+0.5f, (float)y+0.5f, (float)z+0.5f))-0.5f*((float3)((float)def_Nx, (float)def_Ny, (float)def_Nz));
 	const bool rx=fabs(p.x-ps.x)>0.5f*(float)def_streamline_sparse, ry=fabs(p.y-ps.y)>0.5f*(float)def_streamline_sparse, rz=fabs(p.z-ps.z)>0.5f*(float)def_streamline_sparse;
-)+"#else"+R( // D2Q9
-	if(n>=(def_Nx/def_streamline_sparse)*(def_Ny/def_streamline_sparse)) return;
-	const uint y = (uint)(n/(uxx)(def_Nx/def_streamline_sparse)); // disassemble 1D index to 3D coordinates
-	const uint x = (uint)(n%(uxx)(def_Nx/def_streamline_sparse));
-	float3 p = ((float3)((float)def_streamline_sparse*((float)x+0.5f), (float)def_streamline_sparse*((float)y+0.5f), 0.5f))-0.5f*((float3)((float)def_Nx, (float)def_Ny, (float)def_Nz));
-	const bool rx=fabs(p.x-ps.x)>0.5f*(float)def_streamline_sparse, ry=fabs(p.y-ps.y)>0.5f*(float)def_streamline_sparse, rz=true;
-)+"#endif"+R( // D2Q9
 	if((slice_mode==1&&rx)||(slice_mode==2&&ry)||(slice_mode==3&&rz)||(slice_mode==4&&rx&&rz)||(slice_mode==5&&rx&&ry&&rz)||(slice_mode==6&&ry&&rz)||(slice_mode==7&&rx&&ry)) return;
 	if((slice_mode==1||slice_mode==5||slice_mode==4||slice_mode==7)&!rx) p.x = ps.x; // snap streamline position to slice position
 	if((slice_mode==2||slice_mode==5||slice_mode==6||slice_mode==7)&!ry) p.y = ps.y;

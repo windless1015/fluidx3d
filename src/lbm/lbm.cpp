@@ -4,23 +4,10 @@
 
 Units units; // for unit conversion
 
-#if defined(D2Q9)
-const uint velocity_set = 9u;
-const uint dimensions = 2u;
-const uint transfers = 3u;
-#elif defined(D3Q15)
-const uint velocity_set = 15u;
-const uint dimensions = 3u;
-const uint transfers = 5u;
-#elif defined(D3Q19)
+
 const uint velocity_set = 19u;
 const uint dimensions = 3u;
 const uint transfers = 5u;
-#elif defined(D3Q27)
-const uint velocity_set = 27u;
-const uint dimensions = 3u;
-const uint transfers = 9u;
-#endif // D3Q27
 
 uint bytes_per_cell_host() { // returns the number of Bytes per cell allocated in host memory
 	uint bytes_per_cell = 17u; // rho, u, flags
@@ -348,31 +335,16 @@ string LBM_Domain::device_defines() const { return
 	"\n	#define def_domain_offset_y "+to_string(0.5f*(float)((int)Ny+2*Oy+(int)Dy*(2*(int)(Dy>1u)-(int)Ny)))+"f"
 	"\n	#define def_domain_offset_z "+to_string(0.5f*(float)((int)Nz+2*Oz+(int)Dz*(2*(int)(Dz>1u)-(int)Nz)))+"f"
 
-	"\n	#define D"+to_string(dimensions)+"Q"+to_string(velocity_set)+"" // D2Q9/D3Q15/D3Q19/D3Q27
-	"\n	#define def_velocity_set "+to_string(velocity_set)+"u" // LBM velocity set (D2Q9/D3Q15/D3Q19/D3Q27)
+	"\n	#define D"+to_string(dimensions)+"Q"+to_string(velocity_set)+"" // D2Q9/D3Q15/D3Q19
+	"\n	#define def_velocity_set "+to_string(velocity_set)+"u" // LBM velocity set (D2Q9/D3Q15/D3Q19)
 	"\n	#define def_dimensions "+to_string(dimensions)+"u" // number spatial dimensions (2D or 3D)
 	"\n	#define def_transfers "+to_string(transfers)+"u" // number of DDFs that are transferred between multiple domains
 
 	"\n	#define def_c 0.57735027f" // lattice speed of sound c = 1/sqrt(3)*dt
 	"\n	#define def_w " +to_string(1.0f/get_tau())+"f" // relaxation rate w = dt/tau = dt/(nu/c^2+dt/2) = 1/(3*nu+1/2)
-#if defined(D2Q9)
-	"\n	#define def_w0 (1.0f/2.25f)" // center (0)
-	"\n	#define def_ws (1.0f/9.0f)" // straight (1-4)
-	"\n	#define def_we (1.0f/36.0f)" // edge (5-8)
-#elif defined(D3Q15)
-	"\n	#define def_w0 (1.0f/4.5f)" // center (0)
-	"\n	#define def_ws (1.0f/9.0f)" // straight (1-6)
-	"\n	#define def_wc (1.0f/72.0f)" // corner (7-14)
-#elif defined(D3Q19)
 	"\n	#define def_w0 (1.0f/3.0f)" // center (0)
 	"\n	#define def_ws (1.0f/18.0f)" // straight (1-6)
 	"\n	#define def_we (1.0f/36.0f)" // edge (7-18)
-#elif defined(D3Q27)
-	"\n	#define def_w0 (1.0f/3.375f)" // center (0)
-	"\n	#define def_ws (1.0f/13.5f)" // straight (1-6)
-	"\n	#define def_we (1.0f/54.0f)" // edge (7-18)
-	"\n	#define def_wc (1.0f/216.0f)" // corner (19-26)
-#endif // D3Q27
 
 #if defined(SRT)
 	"\n	#define SRT"
