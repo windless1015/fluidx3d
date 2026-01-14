@@ -81,6 +81,14 @@ set(ALL_HEADERS
 add_executable(${PROJECT_NAME} ${ALL_SOURCES} ${ALL_HEADERS})
 
 # ============================================================================
+# Visual Studio 文件夹结构 (与磁盘目录一致)
+# ============================================================================
+source_group("core" FILES ${CORE_HEADERS})
+source_group("lbm" FILES ${LBM_SOURCES} ${LBM_HEADERS})
+source_group("render" FILES ${RENDER_SOURCES} ${RENDER_HEADERS})
+source_group("app" FILES ${APP_SOURCES} ${APP_HEADERS})
+
+# ============================================================================
 # 包含目录
 # ============================================================================
 target_include_directories(${PROJECT_NAME} PRIVATE
