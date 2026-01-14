@@ -37,7 +37,7 @@
 #define GRAPHICS_BACKGROUND_COLOR 0x000000
 #define GRAPHICS_U_MAX 0.18f
 #define GRAPHICS_RHO_DELTA 0.001f
-#define GRAPHICS_T_DELTA 1.0f
+
 #define GRAPHICS_F_MAX 0.001f
 #define GRAPHICS_Q_CRITERION 0.0001f
 #define GRAPHICS_STREAMLINE_SPARSE 8
@@ -50,7 +50,7 @@
 // ============================================================================
 #define TYPE_S 0b00000001  // Solid boundary
 #define TYPE_E 0b00000010  // Equilibrium boundary
-#define TYPE_T 0b00000100  // Temperature boundary
+
 #define TYPE_F 0b00001000  // Fluid
 #define TYPE_I 0b00010000  // Interface
 #define TYPE_G 0b00100000  // Gas

@@ -17,9 +17,6 @@ uint bytes_per_cell_host() { // returns the number of Bytes per cell allocated i
 #ifdef SURFACE
 	bytes_per_cell += 4u; // phi
 #endif // SURFACE
-#ifdef TEMPERATURE
-	bytes_per_cell += 4u; // T
-#endif // TEMPERATURE
 	return bytes_per_cell;
 }
 uint bytes_per_cell_device() { // returns the number of Bytes per cell allocated in device memory
@@ -30,31 +27,25 @@ uint bytes_per_cell_device() { // returns the number of Bytes per cell allocated
 #ifdef SURFACE
 	bytes_per_cell += 12u; // phi, mass, flags
 #endif // SURFACE
-#ifdef TEMPERATURE
-	bytes_per_cell += 7u*sizeof(fpxx)+4u; // gi, T
-#endif // TEMPERATURE
+
 	return bytes_per_cell;
 }
 uint bandwidth_bytes_per_cell_device() { // returns the bandwidth in Bytes per cell per time step from/to device memory
 	uint bandwidth_bytes_per_cell = velocity_set*2u*sizeof(fpxx)+1u; // lattice.set()*2*fi, flags
 #ifdef UPDATE_FIELDS
 	bandwidth_bytes_per_cell += 16u; // rho, u
-#ifdef TEMPERATURE
-	bandwidth_bytes_per_cell += 4u; // T
-#endif // TEMPERATURE
+
 #endif // UPDATE_FIELDS
 #ifdef FORCE_FIELD
 	bandwidth_bytes_per_cell += 12u; // F
 #endif // FORCE_FIELD
-#if defined(MOVING_BOUNDARIES)||defined(SURFACE)||defined(TEMPERATURE)
+#if defined(MOVING_BOUNDARIES)||defined(SURFACE)
 	bandwidth_bytes_per_cell += (velocity_set-1u)*1u; // neighbor flags have to be loaded
-#endif // MOVING_BOUNDARIES, SURFACE or TEMPERATURE
+#endif // MOVING_BOUNDARIES or SURFACE
 #ifdef SURFACE
 	bandwidth_bytes_per_cell += (1u+(2u*velocity_set-1u)*sizeof(fpxx)+8u+(velocity_set-1u)*4u) + 1u + 1u + (4u+velocity_set+4u+4u+4u); // surface_0 (flags, fi, mass, massex), surface_1 (flags), surface_2 (flags), surface_3 (rho, flags, mass, massex, phi)
 #endif // SURFACE
-#ifdef TEMPERATURE
-	bandwidth_bytes_per_cell += 7u*2u*sizeof(fpxx); // 2*gi
-#endif // TEMPERATURE
+
 	return bandwidth_bytes_per_cell;
 }
 uint3 resolution(const float3 box_aspect_ratio, const uint memory) { // input: simulation box aspect ratio and VRAM occupation in MB, output: grid resolution
@@ -137,13 +128,7 @@ void LBM_Domain::allocate(Device& device) {
 	kernel_surface_3 = Kernel(device, N, "surface_3", rho, flags, mass, massex, phi);
 #endif // SURFACE
 
-#ifdef TEMPERATURE
-	gi = Memory<fpxx>(device, N, 7u, false);
-	T = Memory<float>(device, N, 1u, true, true, 1.0f);
-	kernel_initialize.add_parameters(gi, T);
-	kernel_stream_collide.add_parameters(gi, T);
-	kernel_update_fields.add_parameters(gi, T);
-#endif // TEMPERATURE
+
 
 #ifdef PARTICLES
 	particles = Memory<float>(device, (ulong)particles_N, 3u);
@@ -410,12 +395,7 @@ string LBM_Domain::device_defines() const { return
 	"\n	#define def_6_sigma "+to_string(6.0f*sigma)+"f" // rho_laplace = 2*o*K, rho = 1-rho_laplace/c^2 = 1-(6*o)*K
 #endif // SURFACE
 
-#ifdef TEMPERATURE
-	"\n	#define TEMPERATURE"
-	"\n	#define def_w_T "+to_string(1.0f/(2.0f*alpha+0.5f))+"f" // wT = dt/tauT = 1/(2*alpha+1/2), alpha = thermal diffusion coefficient
-	"\n	#define def_beta "+to_string(beta)+"f" // thermal expansion coefficient
-	"\n	#define def_T_avg "+to_string(T_avg)+"f" // average temperature
-#endif // TEMPERATURE
+
 
 #ifdef SUBGRID
 	"\n	#define SUBGRID"
@@ -458,12 +438,7 @@ void LBM_Domain::Graphics::allocate(Device& device) {
 	kernel_graphics_q.add_parameters(lbm->flags);
 #endif // SURFACE
 
-#ifdef TEMPERATURE
-	kernel_graphics_field.add_parameters(lbm->T);
-	kernel_graphics_field_slice.add_parameters(lbm->T);
-	kernel_graphics_streamline.add_parameters(lbm->T);
-	kernel_graphics_q.add_parameters(lbm->T);
-#endif // TEMPERATURE
+
 
 #ifdef PARTICLES
 	kernel_graphics_particles = Kernel(device, lbm->particles.length(), "graphics_particles", camera_parameters, bitmap, zbuffer, lbm->particles);
@@ -545,7 +520,7 @@ string LBM_Domain::Graphics::device_defines() const { return
 	"\n	#define def_screen_height "    +to_string(camera.height)+"u"
 	"\n	#define def_scale_u "          +to_string(1.0f/(0.57735027f*(GRAPHICS_U_MAX)))+"f"
 	"\n	#define def_scale_rho "        +to_string(0.5f/(GRAPHICS_RHO_DELTA))+"f"
-	"\n	#define def_scale_T "          +to_string(0.5f/(GRAPHICS_T_DELTA))+"f"
+
 	"\n	#define def_scale_F "          +to_string(0.5f/(GRAPHICS_F_MAX))+"f"
 	"\n	#define def_scale_Q_min "      +to_string(GRAPHICS_Q_CRITERION)+"f"
 	"\n	#define def_streamline_sparse "+to_string(GRAPHICS_STREAMLINE_SPARSE)+"u"
@@ -557,7 +532,7 @@ string LBM_Domain::Graphics::device_defines() const { return
 	"\n	#define COLOR_S (127<<16|127<<8|127)" // (stationary or moving) solid boundary
 	"\n	#define COLOR_E (  0<<16|255<<8|  0)" // equilibrium boundary (inflow/outflow)
 	"\n	#define COLOR_M (255<<16|  0<<8|255)" // cells next to moving solid boundary
-	"\n	#define COLOR_T (255<<16|  0<<8|  0)" // temperature boundary
+
 	"\n	#define COLOR_F (  0<<16|  0<<8|255)" // fluid
 	"\n	#define COLOR_I (  0<<16|255<<8|255)" // interface
 	"\n	#define COLOR_0 (127<<16|127<<8|127)" // regular cell or gas
@@ -686,11 +661,7 @@ LBM::LBM(const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint 
 		phi = Memory_Container(this, buffers_phi, "phi");
 #endif // SURFACE
 	} {
-#ifdef TEMPERATURE
-		Memory<float>** buffers_T = new Memory<float>*[D];
-		for(uint d=0u; d<D; d++) buffers_T[d] = &(lbm_domain[d]->T);
-		T = Memory_Container(this, buffers_T, "T");
-#endif // TEMPERATURE
+
 	} {
 #ifdef PARTICLES
 		particles = &(lbm_domain[0]->particles);
@@ -748,11 +719,7 @@ void LBM::sanity_checks_constructor(const vector<Device_Info>& device_infos, con
 #ifndef SURFACE
 	if(sigma!=0.0f) print_error("Surface tension is set in LBM constructor in main_setup(), but SURFACE is not enabled. Uncomment \"#define SURFACE\" in defines.hpp.");
 #endif // SURFACE
-#ifndef TEMPERATURE
-	if(alpha!=0.0f||beta!=0.0f) print_error("Thermal diffusion/expansion coefficients are set in LBM constructor in main_setup(), but TEMPERATURE is not enabled. Uncomment \"#define TEMPERATURE\" in defines.hpp.");
-#else // TEMPERATURE
-	if(alpha==0.0f&&beta==0.0f) print_warning("The TEMPERATURE extension is enabled but the thermal diffusion/expansion coefficients alpha/beta in the LBM constructor are both set to zero. You may disable the extension by commenting out \"#define TEMPERATURE\" in defines.hpp.");
-#endif // TEMPERATURE
+
 #ifdef PARTICLES
 	if(particles_N==0u) print_error("The PARTICLES extension is enabled but the number of particles is set to 0. Comment out \"#define PARTICLES\" in defines.hpp.");
 	if(get_D()>1u) print_error("The PARTICLES extension is not supported in multi-GPU mode.");
@@ -787,7 +754,6 @@ void LBM::sanity_checks_initialization() { // sanity checks during initializatio
 		equilibrium_boundaries_used = equilibrium_boundaries_used || t_equilibrium_boundaries_used[t];
 	}
 	surface_used = (bool)(flags_used&(TYPE_F|TYPE_I|TYPE_G));
-	temperature_used = (bool)(flags_used&TYPE_T);
 #ifndef MOVING_BOUNDARIES
 	if(moving_boundaries_used) print_warning("Some boundary cells have non-zero velocity, but MOVING_BOUNDARIES is not enabled. If you intend to use moving boundaries, uncomment \"#define MOVING_BOUNDARIES\" in defines.hpp.");
 #else // MOVING_BOUNDARIES
@@ -803,9 +769,7 @@ void LBM::sanity_checks_initialization() { // sanity checks during initializatio
 #else // SURFACE
 	if(!surface_used) print_error("The SURFACE extension is enabled but no fluid/interface/gas cells (TYPE_F/TYPE_I/TYPE_G flags) are placed in the simulation box. Disable the extension by commenting out \"#define SURFACE\" in defines.hpp.");
 #endif // SURFACE
-#ifndef TEMPERATURE
-	if(temperature_used) print_error("Some cells are set as temperature boundary with the TYPE_T flag, but TEMPERATURE is not enabled. Uncomment \"#define TEMPERATURE\" in defines.hpp.");
-#endif // TEMPERATURE
+
 }
 
 void LBM::initialize() { // write all data fields to device and call kernel_initialize
@@ -822,9 +786,7 @@ void LBM::initialize() { // write all data fields to device and call kernel_init
 #ifdef SURFACE
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->phi.enqueue_write_to_device();
 #endif // SURFACE
-#ifdef TEMPERATURE
-	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->T.enqueue_write_to_device();
-#endif // TEMPERATURE
+
 #ifdef PARTICLES
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->particles.enqueue_write_to_device();
 #endif // PARTICLES
@@ -840,10 +802,7 @@ void LBM::initialize() { // write all data fields to device and call kernel_init
 	communicate_phi_massex_flags();
 #endif // SURFACE
 	communicate_fi(); // time step must be odd here
-#ifdef TEMPERATURE
-	communicate_T(); // T halo data is required for field_slice rendering
-	communicate_gi(); // time step must be odd here
-#endif // TEMPERATURE
+
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->finish_queue();
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->reset_time_step(); // set time step to 0 again
 	initialized = true;
@@ -866,12 +825,7 @@ void LBM::do_time_step() { // call kernel_stream_collide to perform one LBM time
 	communicate_phi_massex_flags();
 #endif // SURFACE
 	communicate_fi();
-#ifdef TEMPERATURE
-#ifdef GRAPHICS
-	communicate_T(); // T halo data is required for field_slice rendering
-#endif // GRAPHICS
-	communicate_gi();
-#endif // TEMPERATURE
+
 #ifdef PARTICLES
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_integrate_particles(); // intgegrate particles forward in time and couple particles to fluid
 #endif // PARTICLES
@@ -990,10 +944,7 @@ void LBM::write_status(const string& path) { // write LBM status report to a .tx
 #ifdef SURFACE
 	status += "Surface Tension Coefficient = "+to_string(get_sigma())+"\n";
 #endif // SURFACE
-#ifdef TEMPERATURE
-	status += "Thermal Diffusion Coefficient = "+to_string(get_alpha())+"\n";
-	status += "Thermal Expansion Coefficient = "+to_string(get_beta())+"\n";
-#endif // TEMPERATURE
+
 	const string filename = default_filename(path, "status", ".txt", get_t());
 	write_file(filename, status);
 }
@@ -1089,11 +1040,9 @@ int* LBM::Graphics::draw_frame() {
 		slice_mode = (slice_mode+1)%8; key_T = false;
 	}
 	if(key_Z) {
-#ifndef TEMPERATURE
+
 		field_mode = (field_mode+1)%2; key_Z = false; // field_mode = { 0 (u), 1 (rho) }
-#else // TEMPERATURE
-		field_mode = (field_mode+1)%3; key_Z = false; // field_mode = { 0 (u), 1 (rho), 2 (T) }
-#endif // TEMPERATURE
+
 	}
 	if(slice_mode==1u) {
 		if(key_Q) { slice_x = clamp(slice_x-1, 0, (int)lbm->get_Nx()-1); key_Q = false; }
@@ -1251,12 +1200,7 @@ void LBM_Domain::allocate_transfer(Device& device) { // allocate all memory for 
 	kernel_transfer[enum_transfer_field::phi_massex_flags][0] = Kernel(device, 0u, "transfer_extract_phi_massex_flags", 0u, t, transfer_buffer_p, transfer_buffer_m, phi, massex, flags);
 	kernel_transfer[enum_transfer_field::phi_massex_flags][1] = Kernel(device, 0u, "transfer__insert_phi_massex_flags", 0u, t, transfer_buffer_p, transfer_buffer_m, phi, massex, flags);
 #endif // SURFACE
-#ifdef TEMPERATURE
-	kernel_transfer[enum_transfer_field::gi              ][0] = Kernel(device, 0u, "transfer_extract_gi"              , 0u, t, transfer_buffer_p, transfer_buffer_m, gi);
-	kernel_transfer[enum_transfer_field::gi              ][1] = Kernel(device, 0u, "transfer__insert_gi"              , 0u, t, transfer_buffer_p, transfer_buffer_m, gi);
-	kernel_transfer[enum_transfer_field::T               ][0] = Kernel(device, 0u, "transfer_extract_T"               , 0u, t, transfer_buffer_p, transfer_buffer_m, T);
-	kernel_transfer[enum_transfer_field::T               ][1] = Kernel(device, 0u, "transfer__insert_T"               , 0u, t, transfer_buffer_p, transfer_buffer_m, T);
-#endif // TEMPERATURE
+
 }
 
 ulong LBM_Domain::get_area(const uint direction) {
@@ -1319,11 +1263,3 @@ void LBM::communicate_phi_massex_flags() {
 	communicate_field(enum_transfer_field::phi_massex_flags, 9u);
 }
 #endif // SURFACE
-#ifdef TEMPERATURE
-void LBM::communicate_gi() {
-	communicate_field(enum_transfer_field::gi, sizeof(fpxx));
-}
-void LBM::communicate_T() {
-	communicate_field(enum_transfer_field::T, 4u);
-}
-#endif // TEMPERATURE

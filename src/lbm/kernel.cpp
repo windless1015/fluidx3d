@@ -1180,37 +1180,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 }
 )+"#endif"+R( // SURFACE
 
-)+"#ifdef TEMPERATURE"+R(
-)+R(void neighbors_temperature(const uxx n, uxx* j7) { // calculate neighbor indices
-	uxx x0, xp, xm, y0, yp, ym, z0, zp, zm;
-	calculate_indices(n, &x0, &xp, &xm, &y0, &yp, &ym, &z0, &zp, &zm);
-	j7[0] = n;
-	j7[1] = xp+y0+z0; j7[2] = xm+y0+z0; // +00 -00
-	j7[3] = x0+yp+z0; j7[4] = x0+ym+z0; // 0+0 0-0
-	j7[5] = x0+y0+zp; j7[6] = x0+y0+zm; // 00+ 00-
-}
-)+R(void calculate_g_eq(const float T, const float ux, const float uy, const float uz, float* geq) { // calculate g_equilibrium from density and velocity field (perturbation method / DDF-shifting)
-	const float wsT4=0.5f*T, wsTm1=0.125f*(T-1.0f); // 0.125f*T*4.0f (straight directions in D3Q7), wsTm1 is arithmetic optimization to minimize digit extinction, lattice speed of sound is 1/2 for D3Q7 and not 1/sqrt(3)
-	geq[0] = fma(0.25f, T, -0.25f); // 000
-	geq[1] = fma(wsT4, ux, wsTm1); geq[2] = fma(wsT4, -ux, wsTm1); // +00 -00, source: http://dx.doi.org/10.1016/j.ijheatmasstransfer.2009.11.014
-	geq[3] = fma(wsT4, uy, wsTm1); geq[4] = fma(wsT4, -uy, wsTm1); // 0+0 0-0
-	geq[5] = fma(wsT4, uz, wsTm1); geq[6] = fma(wsT4, -uz, wsTm1); // 00+ 00-
-}
-)+R(void load_g(const uxx n, float* ghn, const global fpxx* gi, const uxx* j7, const ulong t) {
-	ghn[0] = load(gi, index_f(n, 0u)); // Esoteric-Pull
-	for(uint i=1u; i<7u; i+=2u) {
-		ghn[i   ] = load(gi, index_f(n    , t%2ul ? i    : i+1u));
-		ghn[i+1u] = load(gi, index_f(j7[i], t%2ul ? i+1u : i   ));
-	}
-}
-)+R(void store_g(const uxx n, const float* ghn, global fpxx* gi, const uxx* j7, const ulong t) {
-	store(gi, index_f(n, 0u), ghn[0]); // Esoteric-Pull
-	for(uint i=1u; i<7u; i+=2u) {
-		store(gi, index_f(j7[i], t%2ul ? i+1u : i   ), ghn[i   ]);
-		store(gi, index_f(n    , t%2ul ? i    : i+1u), ghn[i+1u]);
-	}
-}
-)+"#endif"+R( // TEMPERATURE
+
 
 )+R(void load_f(const uxx n, float* fhn, const global fpxx* fi, const uxx* j, const ulong t) {
 	fhn[0] = load(fi, index_f(n, 0u)); // Esoteric-Pull
@@ -1248,9 +1218,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#ifdef SURFACE"+R(
 	, global float* mass, global float* massex, global float* phi // argument order is important
 )+"#endif"+R( // SURFACE
-)+"#ifdef TEMPERATURE"+R(
-	, global fpxx* gi, const global float* T // argument order is important
-)+"#endif"+R( // TEMPERATURE
+
 )+") {"+R( // initialize()
 	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute initialize() on halo
@@ -1316,15 +1284,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 		flags[n] = flagsn;
 	}
 )+"#endif"+R( // SURFACE
-)+"#ifdef TEMPERATURE"+R(
-	{ // separate block to avoid variable name conflicts
-		float geq[7];
-		calculate_g_eq(T[n], u[n], u[def_N+(ulong)n], u[2ul*def_N+(ulong)n], geq);
-		uxx j7[7]; // neighbors of D3Q7 subset
-		neighbors_temperature(n, j7);
-		store_g(n, geq, gi, j7, 1ul);
-	}
-)+"#endif"+R( // TEMPERATURE
+
 	store_f(n, feq, fi, j, 1ul); // write to fi
 } // initialize()
 
@@ -1357,9 +1317,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#ifdef SURFACE"+R(
 	, const global float* mass // argument order is important
 )+"#endif"+R( // SURFACE
-)+"#ifdef TEMPERATURE"+R(
-	, global fpxx* gi, global float* T // argument order is important
-)+"#endif"+R( // TEMPERATURE
+
 )+") {"+R( // stream_collide()
 	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute stream_collide() on halo
@@ -1415,36 +1373,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 	}
 )+"#endif"+R( // SURFACE
 
-)+"#ifdef TEMPERATURE"+R(
-	{ // separate block to avoid variable name conflicts
-		uxx j7[7]; // neighbors of D3Q7 subset
-		neighbors_temperature(n, j7);
-		float ghn[7]; // read from gA and stream to gh (D3Q7 subset, periodic boundary conditions)
-		load_g(n, ghn, gi, j7, t); // perform streaming (part 2)
-		float Tn;
-		if(flagsn&TYPE_T) {
-			Tn = T[n]; // apply preset temperature
-		} else {
-			Tn = 0.0f;
-			for(uint i=0u; i<7u; i++) Tn += ghn[i]; // calculate temperature from g
-			Tn += 1.0f; // add 1.0f last to avoid digit extinction effects when summing up gi (perturbation method / DDF-shifting)
-		}
-		float geq[7]; // cache f_equilibrium[n]
-		calculate_g_eq(Tn, uxn, uyn, uzn, geq); // calculate equilibrium DDFs
-		if(flagsn&TYPE_T) {
-			for(uint i=0u; i<7u; i++) ghn[i] = geq[i]; // just write geq to ghn (no collision)
-		} else {
-)+"#ifdef UPDATE_FIELDS"+R(
-			T[n] = Tn; // update temperature field
-)+"#endif"+R( // UPDATE_FIELDS
-			for(uint i=0u; i<7u; i++) ghn[i] = fma(1.0f-def_w_T, ghn[i], def_w_T*geq[i]); // perform collision
-		}
-		store_g(n, ghn, gi, j7, t); // perform streaming (part 1)
-		fxn -= fx*def_beta*(Tn-def_T_avg);
-		fyn -= fy*def_beta*(Tn-def_T_avg);
-		fzn -= fz*def_beta*(Tn-def_T_avg);
-	}
-)+"#endif"+R( // TEMPERATURE
+
 
 	{ // separate block to avoid variable name conflicts
 )+"#ifdef VOLUME_FORCE"+R( // apply force and collision operator, write to fi in video memory
@@ -1702,9 +1631,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#ifdef FORCE_FIELD"+R(
 	, const global float* F // argument order is important
 )+"#endif"+R( // FORCE_FIELD
-)+"#ifdef TEMPERATURE"+R(
-	, const global fpxx* gi, global float* T // argument order is important
-)+"#endif"+R( // TEMPERATURE
+
 )+") {"+R( // update_fields()
 	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute update_fields() on halo
@@ -1733,26 +1660,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 	}
 )+"#endif"+R( // FORCE_FIELD
 
-)+"#ifdef TEMPERATURE"+R(
-	{ // separate block to avoid variable name conflicts
-		uxx j7[7]; // neighbors of D3Q7 subset
-		neighbors_temperature(n, j7);
-		float ghn[7]; // read from gA and stream to gh (D3Q7 subset, periodic boundary conditions)
-		load_g(n, ghn, gi, j7, t); // perform streaming (part 2)
-		float Tn;
-		if(flagsn&TYPE_T) {
-			Tn = T[n]; // apply preset temperature
-		} else {
-			Tn = 0.0f;
-			for(uint i=0u; i<7u; i++) Tn += ghn[i]; // calculate temperature from g
-			Tn += 1.0f; // add 1.0f last to avoid digit extinction effects when summing up gi (perturbation method / DDF-shifting)
-			T[n] = Tn; // update temperature field
-		}
-		fxn -= fx*def_beta*(Tn-def_T_avg);
-		fyn -= fy*def_beta*(Tn-def_T_avg);
-		fzn -= fz*def_beta*(Tn-def_T_avg);
-	}
-)+"#endif"+R( // TEMPERATURE
+
 
 	{ // separate block to avoid variable name conflicts
 )+"#ifdef VOLUME_FORCE"+R( // apply force and collision operator, write to fi in video memory
@@ -2089,47 +1997,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 }
 )+"#endif"+R( // SURFACE
 
-)+"#ifdef TEMPERATURE"+R(
-)+R(void extract_gi(const uint a, const uxx n, const uint side, const ulong t, global fpxx_copy* transfer_buffer, const global fpxx_copy* gi) {
-	uxx j7[7u]; // neighbor indices
-	neighbors_temperature(n, j7); // calculate neighbor indices
-	const uint i = side+1u;
-	const ulong index = index_f(i%2u ? j7[i] : n, t%2ul ? (i%2u ? i+1u : i-1u) : i); // Esoteric-Pull: standard store, or streaming part 1/2
-	transfer_buffer[a] = gi[index]; // fpxx_copy allows direct copying without decompression+compression
-}
-)+R(void insert_gi(const uint a, const uxx n, const uint side, const ulong t, const global fpxx_copy* transfer_buffer, global fpxx_copy* gi) {
-	uxx j7[7u]; // neighbor indices
-	neighbors_temperature(n, j7); // calculate neighbor indices
-	const uint i = side+1u;
-	const ulong index = index_f(i%2u ? n : j7[i-1u], t%2ul ? i : (i%2u ? i+1u : i-1u)); // Esoteric-Pull: standard load, or streaming part 2/2
-	gi[index] = transfer_buffer[a]; // fpxx_copy allows direct copying without decompression+compression
-}
-)+R(kernel void transfer_extract_gi(const uint direction, const ulong t, global fpxx_copy* transfer_buffer_p, global fpxx_copy* transfer_buffer_m, const global fpxx_copy* gi) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	extract_gi(a, index_extract_p(a, direction), 2u*direction+0u, t, transfer_buffer_p, gi);
-	extract_gi(a, index_extract_m(a, direction), 2u*direction+1u, t, transfer_buffer_m, gi);
-}
-)+R(kernel void transfer__insert_gi(const uint direction, const ulong t, const global fpxx_copy* transfer_buffer_p, const global fpxx_copy* transfer_buffer_m, global fpxx_copy* gi) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	insert_gi(a, index_insert_p(a, direction), 2u*direction+0u, t, transfer_buffer_p, gi);
-	insert_gi(a, index_insert_m(a, direction), 2u*direction+1u, t, transfer_buffer_m, gi);
-}
 
-)+R(kernel void transfer_extract_T(const uint direction, const ulong t, global float* transfer_buffer_p, global float* transfer_buffer_m, const global float* T) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	transfer_buffer_p[a] = T[index_extract_p(a, direction)];
-	transfer_buffer_m[a] = T[index_extract_m(a, direction)];
-}
-)+R(kernel void transfer__insert_T(const uint direction, const ulong t, const global float* transfer_buffer_p, const global float* transfer_buffer_m, global float* T) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	T[index_insert_p(a, direction)] = transfer_buffer_p[a];
-	T[index_insert_m(a, direction)] = transfer_buffer_m[a];
-}
-)+"#endif"+R( // TEMPERATURE
 
 
 
@@ -2318,9 +2186,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 	calculate_indices(n, &x0, &xp, &xm, &y0, &yp, &ym, &z0, &zp, &zm);
 	const int c =  // coloring scheme
 		flagsn_bo==TYPE_S ? COLOR_S : // solid boundary
-		((flagsn&TYPE_T)&&flagsn_bo==TYPE_E) ? color_average(COLOR_T, COLOR_E) : // both temperature boundary and equilibrium boundary
-		((flagsn&TYPE_T)&&flagsn_bo==TYPE_MS) ? color_average(COLOR_T, COLOR_M) : // both temperature boundary and moving boundary
-		flagsn&TYPE_T ? COLOR_T : // temperature boundary
+
 		flagsn_bo==TYPE_E ? COLOR_E : // equilibrium boundary
 		flagsn_bo==TYPE_MS ? COLOR_M : // moving boundary
 		flagsn&TYPE_F ? COLOR_F : // fluid
@@ -2412,11 +2278,9 @@ string opencl_c_container() { return R( // ########################## begin of O
 	}
 }
 
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 )+R(kernel void graphics_field(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const global float* rho, const global float* u, const global uchar* flags) {
-)+"#else"+R( // TEMPERATURE
-)+R(kernel void graphics_field(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const global float* rho, const global float* u, const global uchar* flags, const global float* T) {
-)+"#endif"+R( // TEMPERATURE
+
 	const uxx n = get_global_id(0);
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute graphics_field() on halo
 	const uint3 xyz = coordinates(n);
@@ -2436,18 +2300,14 @@ string opencl_c_container() { return R( // ########################## begin of O
 	switch(field_mode) {
 		case 0: c = colorscale_rainbow(def_scale_u*ul); break; // coloring by velocity
 		case 1: c = colorscale_twocolor(0.5f+def_scale_rho*(rho[n]-1.0f)); break; // coloring by density
-)+"#ifdef TEMPERATURE"+R(
-		case 2: c = colorscale_iron(0.5f+def_scale_T*(T[n]-def_T_avg)); break; // coloring by temperature
-)+"#endif"+R( // TEMPERATURE
+
 	}
 	draw_line(p-(0.5f/ul)*un, p+(0.5f/ul)*un, c, camera_cache, bitmap, zbuffer);
 }
 
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 )+R(int ray_grid_traverse_sum(const int background_color, const ray r, const uint Nx, const uint Ny, const uint Nz, const int field_mode, const global float* rho, const global float* u, const global uchar* flags) {
-)+"#else"+R( // TEMPERATURE
-)+R(int ray_grid_traverse_sum(const int background_color, const ray r, const uint Nx, const uint Ny, const uint Nz, const int field_mode, const global float* rho, const global float* u, const global uchar* flags, const global float* T) {
-)+"#endif"+R( // TEMPERATURE
+
 	float sum = 0.0f;
 	float traversed_cells_weighted = 0.0f;
 	uint traversed_cells = 0u;
@@ -2497,35 +2357,15 @@ string opencl_c_container() { return R( // ########################## begin of O
 			color = colorscale_twocolor(0.5f+def_scale_rho*(sum/traversed_cells_weighted-1.0f));
 			traversed_cells_weighted *= def_scale_rho;
 			break;
-)+"#ifdef TEMPERATURE"+R(
-		case 2: // coloring by temperature
-			while(traversed_cells<Nx+Ny+Nz) { // limit number of traversed cells to space diagonal
-				if(tmx<tmy) { if(tmx<tmz) { xyz.x += dx; tmx += tdx; } else { xyz.z += dz; tmz += tdz; } }
-				else /****/ { if(tmy<tmz) { xyz.y += dy; tmy += tdy; } else { xyz.z += dz; tmz += tdz; } }
-				if(xyz.x<0 || xyz.y<0 || xyz.z<0 || xyz.x>=(int)Nx || xyz.y>=(int)Ny || xyz.z>=(int)Nz) break; // out of simulation box
-				const uxx n = index((uint3)((uint)clamp(xyz.x, 0, (int)Nx-1), (uint)clamp(xyz.y, 0, (int)Ny-1), (uint)clamp(xyz.z, 0, (int)Nz-1)));
-				if(!(flags[n]&(TYPE_S|TYPE_E|TYPE_G))) {
-					const float Tn = T[n];
-					const float weight = sq(Tn-def_T_avg);
-					sum = fma(weight, Tn, sum);
-					traversed_cells_weighted += weight;
-				}
-				traversed_cells++;
-			}
-			color = colorscale_iron(0.5f+def_scale_T*(sum/traversed_cells_weighted-def_T_avg));
-			traversed_cells_weighted *= sq(4.0f*def_scale_T);
-			break;
-)+"#endif"+R( // TEMPERATURE
+
 	}
 	const float opacity = clamp((traversed_cells_weighted-1.0f)/(float)traversed_cells, 0.0f, 1.0f);
 	return color_mix(color, background_color, opacity);
 }
 
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 )+R(kernel void graphics_field_rt(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const global float* rho, const global float* u, const global uchar* flags) {
-)+"#else"+R( // TEMPERATURE
-)+R(kernel void graphics_field_rt(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const global float* rho, const global float* u, const global uchar* flags, const global float* T) {
-)+"#endif"+R( // TEMPERATURE
+
 	const uint gid = get_global_id(0); // workgroup size alignment is critical
 	const uint lid = get_local_id(0); // make workgropus not horizontal stripes of pixels, but 8x8 rectangular (close to square) tiles
 	const uint lsi = get_local_size(0); // (50% performance boost due to more coalesced memory access)
@@ -2540,18 +2380,14 @@ string opencl_c_container() { return R( // ########################## begin of O
 	const float distance = intersect_cuboid(camray, (float3)(0.0f, 0.0f, 0.0f), (float)def_Nx, (float)def_Ny, (float)def_Nz);
 	if(distance==-1.0f) return;
 	camray.origin = camray.origin+fmax(distance+0.005f, 0.005f)*camray.direction;
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 	bitmap[n] = ray_grid_traverse_sum(bitmap[n], camray, def_Nx, def_Ny, def_Nz, field_mode, rho, u, flags);
-)+"#else"+R( // TEMPERATURE
-	bitmap[n] = ray_grid_traverse_sum(bitmap[n], camray, def_Nx, def_Ny, def_Nz, field_mode, rho, u, flags, T);
-)+"#endif"+R( // TEMPERATURE
+
 }
 
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 )+R(kernel void graphics_field_slice(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const int slice_mode, const int slice_x, const int slice_y, const int slice_z, const global float* rho, const global float* u, const global uchar* flags) {
-)+"#else"+R( // TEMPERATURE
-)+R(kernel void graphics_field_slice(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const int slice_mode, const int slice_x, const int slice_y, const int slice_z, const global float* rho, const global float* u, const global uchar* flags, const global float* T) {
-)+"#endif"+R( // TEMPERATURE
+
 	const uint a = get_global_id(0);
 	const uint direction = (uint)clamp(slice_mode-1, 0, 2);
 	if(a>=get_area(direction)||slice_mode<1||slice_mode>3||(slice_mode==1&&(slice_x<0||slice_x>=(int)def_Nx))||(slice_mode==2&&(slice_y<0||slice_y>=(int)def_Ny))||(slice_mode==3&&(slice_z<0||slice_z>=(int)def_Nz))) return;
@@ -2589,14 +2425,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 			c10 = colorscale_twocolor(0.5f+def_scale_rho*(rho[n10]-1.0f));
 			c11 = colorscale_twocolor(0.5f+def_scale_rho*(rho[n11]-1.0f));
 			break;
-)+"#ifdef TEMPERATURE"+R(
-		case 2: // coloring by temperature
-			c00 = colorscale_iron(0.5f+def_scale_T*(T[n00]-def_T_avg));
-			c01 = colorscale_iron(0.5f+def_scale_T*(T[n01]-def_T_avg));
-			c10 = colorscale_iron(0.5f+def_scale_T*(T[n10]-def_T_avg));
-			c11 = colorscale_iron(0.5f+def_scale_T*(T[n11]-def_T_avg));
-			break;
-)+"#endif"+R( // TEMPERATURE
+
 	}
 	c00 = shading(c00, p00, normal, camera_cache);
 	c01 = shading(c01, p01, normal, camera_cache);
@@ -2609,11 +2438,9 @@ string opencl_c_container() { return R( // ########################## begin of O
 	if(d10&&d00) draw_triangle_interpolated(p10, p00, p, c10, c00, c, camera_cache, bitmap, zbuffer);
 }
 
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 )+R(kernel void graphics_streamline(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const int slice_mode, const int slice_x, const int slice_y, const int slice_z, const global float* rho, const global float* u, const global uchar* flags) {
-)+"#else"+R( // TEMPERATURE
-)+R(kernel void graphics_streamline(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const int slice_mode, const int slice_x, const int slice_y, const int slice_z, const global float* rho, const global float* u, const global uchar* flags, const global float* T) {
-)+"#endif"+R( // TEMPERATURE
+
 	const uxx n = get_global_id(0);
 	const float3 ps = (float3)((float)slice_x+0.5f-0.5f*(float)def_Nx, (float)slice_y+0.5f-0.5f*(float)def_Ny, (float)slice_z+0.5f-0.5f*(float)def_Nz);
 	if(n>=(uxx)(def_Nx/def_streamline_sparse)*(uxx)(def_Ny/def_streamline_sparse)*(uxx)(def_Nz/def_streamline_sparse)) return;
@@ -2648,20 +2475,16 @@ string opencl_c_container() { return R( // ########################## begin of O
 			switch(field_mode) {
 				case 0: c = colorscale_rainbow(def_scale_u*ul); break; // coloring by velocity
 				case 1: c = colorscale_twocolor(0.5f+def_scale_rho*(rho[n]-1.0f)); break; // coloring by density
-)+"#ifdef TEMPERATURE"+R(
-				case 2: c = colorscale_iron(0.5f+def_scale_T*(T[n]-def_T_avg)); break; // coloring by temperature
-)+"#endif"+R( // TEMPERATURE
+
 			}
 			draw_line(p0, p1, c, camera_cache, bitmap, zbuffer);
 		}
 	}
 }
 
-)+"#ifndef TEMPERATURE"+R(
+)+R(
 )+R(kernel void graphics_q_field(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const global float* rho, const global float* u, const global uchar* flags) {
-)+"#else"+R( // TEMPERATURE
-)+R(kernel void graphics_q_field(const global float* camera, global int* bitmap, global int* zbuffer, const int field_mode, const global float* rho, const global float* u, const global uchar* flags, const global float* T) {
-)+"#endif"+R( // TEMPERATURE
+
 	const uxx n = get_global_id(0);
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute graphics_q_field() on halo
 	if(flags[n]&(TYPE_S|TYPE_E|TYPE_I|TYPE_G)) return;
@@ -2677,9 +2500,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 	switch(field_mode) {
 		case 0: c = colorscale_rainbow(def_scale_u*ul); break; // coloring by velocity
 		case 1: c = colorscale_twocolor(0.5f+def_scale_rho*(rho[n]-1.0f)); break; // coloring by density
-)+"#ifdef TEMPERATURE"+R(
-		case 2: c = colorscale_iron(0.5f+def_scale_T*(T[n]-def_T_avg)); break; // coloring by temperature
-)+"#endif"+R( // TEMPERATURE
+
 	}
 	draw_line(p-(0.5f/ul)*un, p+(0.5f/ul)*un, c, camera_cache, bitmap, zbuffer);
 }
@@ -2688,9 +2509,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#ifdef SURFACE"+R(
 	, const global uchar* flags // argument order is important
 )+"#endif"+R( // SURFACE
-)+"#ifdef TEMPERATURE"+R(
-	, const global float* T // argument order is important
-)+"#endif"+R( // TEMPERATURE
+
 )+") {"+R( // graphics_q()
 	const uxx n = get_global_id(0);
 	const uint3 xyz = coordinates(n);
@@ -2738,14 +2557,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 				c1 = shading(colorscale_twocolor(0.5f+def_scale_rho*(trilinear(p1, v)-1.0f)), p+p1, normal, camera_cache);
 				c2 = shading(colorscale_twocolor(0.5f+def_scale_rho*(trilinear(p2, v)-1.0f)), p+p2, normal, camera_cache);
 				break;
-)+"#ifdef TEMPERATURE"+R(
-			case 2: // coloring by temperature
-				for(uint i=0u; i<8u; i++) v[i] = T[j[i]];
-				c0 = shading(colorscale_iron(0.5f+def_scale_T*(trilinear(p0, v)-def_T_avg)), p+p0, normal, camera_cache);
-				c1 = shading(colorscale_iron(0.5f+def_scale_T*(trilinear(p1, v)-def_T_avg)), p+p1, normal, camera_cache);
-				c2 = shading(colorscale_iron(0.5f+def_scale_T*(trilinear(p2, v)-def_T_avg)), p+p2, normal, camera_cache);
-				break;
-)+"#endif"+R( // TEMPERATURE
+
 		}
 		draw_triangle_interpolated(p+p0, p+p1, p+p2, c0, c1, c2, camera_cache, bitmap, zbuffer); // draw triangle with interpolated colors
 	}

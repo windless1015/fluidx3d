@@ -18,11 +18,6 @@ void draw_scale(const int field_mode, const int color) {
 			scale_max = units.si_rho(1.0f)+units.si_rho(GRAPHICS_RHO_DELTA);
 			title = "density rho / "+string(units.si_u(1.0f)==1.0f ? "1" : "[kg/m^3]");
 			break;
-		case 2: // coloring by temperature
-			scale_min = units.si_T(1.0f)-units.si_T(GRAPHICS_T_DELTA);
-			scale_max = units.si_T(1.0f)+units.si_T(GRAPHICS_T_DELTA);
-			title = "temperature T / "+string(units.si_u(1.0f)==1.0f ? "1" : "[K]");
-			break;
 	}
 	const int margin_x=2*(FONT_WIDTH), margin_y=1*(FONT_HEIGHT); // margins in x and y
 	const int ox=camera.width-16*(FONT_WIDTH)-margin_x-1, oy=(FONT_HEIGHT)*3/2+margin_y+8; // plot area offset x/y
