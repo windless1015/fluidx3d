@@ -1267,10 +1267,8 @@ void LBM::communicate_phi_massex_flags() {
 }
 #endif // SURFACE
 
-void LBM::write_vtk(const string& filename) { // write simulation data to VTK file
-	update_fields(); // Ensure macroscopic fields are up-to-date on device
-	rho.read_from_device();
-	u.read_from_device();
+void LBM::write_vtk(const string& filename) { // write simulation data to VTK file (ASCII VTI)
+	update_fields(); // ensure macroscopic fields are up-to-date on device
 	flags.read_from_device();
 #ifdef SURFACE
 	phi.read_from_device();
@@ -1278,91 +1276,54 @@ void LBM::write_vtk(const string& filename) { // write simulation data to VTK fi
 
 	const float spacing = units.si_x(1.0f);
 	const float3 origin = spacing*float3(0.5f-0.5f*(float)Nx, 0.5f-0.5f*(float)Ny, 0.5f-0.5f*(float)Nz);
-	const string header =
-		"# vtk DataFile Version 3.0\nFluidX3D Output\nBINARY\nDATASET STRUCTURED_POINTS\n"
-		"DIMENSIONS "+to_string(Nx)+" "+to_string(Ny)+" "+to_string(Nz)+"\n"
-		"ORIGIN "+to_string(origin.x)+" "+to_string(origin.y)+" "+to_string(origin.z)+"\n"
-		"SPACING "+to_string(spacing)+" "+to_string(spacing)+" "+to_string(spacing)+"\n"
-		"POINT_DATA "+to_string((ulong)Nx*(ulong)Ny*(ulong)Nz)+"\n";
-	
-	create_folder(filename);
-	std::ofstream file(filename, std::ios::out|std::ios::binary);
+	const ulong N = (ulong)Nx*(ulong)Ny*(ulong)Nz;
+
+	const string output = create_file_extension(filename, ".vti");
+	create_folder(output);
+	std::ofstream file(output);
 	if(!file.is_open()) {
-		print_error("Could not open file "+filename+" for writing.");
+		print_error("Could not open file "+output+" for writing.");
 		return;
 	}
-	file.write(header.c_str(), header.length());
 
-	const ulong N = (ulong)Nx*(ulong)Ny*(ulong)Nz;
-	
-	{ // write density
-		const string section_header = "SCALARS density float 1\nLOOKUP_TABLE default\n";
-		file.write(section_header.c_str(), section_header.length());
-		const float conversion = (float)units.si_rho(1.0f);
-		float* buffer = new float[N];
-		parallel_for(N, [&](ulong n) {
-			buffer[n] = reverse_bytes((float)(rho[n]*conversion));
-		});
-		file.write((char*)buffer, N*sizeof(float));
-		delete[] buffer;
-	}
-
-	{ // write velocity
-		const string section_header = "VECTORS velocity float\n";
-		file.write(section_header.c_str(), section_header.length());
-		const float conversion = (float)units.si_u(1.0f);
-		float* buffer = new float[3*N];
-		parallel_for(N, [&](ulong n) {
-			buffer[3*n+0] = reverse_bytes((float)(u(n, 0)*conversion));
-			buffer[3*n+1] = reverse_bytes((float)(u(n, 1)*conversion));
-			buffer[3*n+2] = reverse_bytes((float)(u(n, 2)*conversion));
-		});
-		file.write((char*)buffer, 3*N*sizeof(float));
-		delete[] buffer;
-	}
-	
-	{ // write mass
-		const string section_header = "SCALARS mass float 1\nLOOKUP_TABLE default\n";
-		file.write(section_header.c_str(), section_header.length());
-		const float conversion = (float)units.si_rho(1.0f); // approx conversion using density scaling
-		float* buffer = new float[N];
-		parallel_for(N, [&](ulong n) {
-			float m = rho[n];
-#ifdef SURFACE
-			m *= phi[n];
-#endif // SURFACE
-			buffer[n] = reverse_bytes((float)(m*conversion));
-		});
-		file.write((char*)buffer, N*sizeof(float));
-		delete[] buffer;
-	}
+	file << "<?xml version=\"1.0\"?>\n";
+	file << "<VTKFile type=\"ImageData\" version=\"0.1\" byte_order=\"LittleEndian\">\n";
+	file << "  <ImageData WholeExtent=\"0 " << Nx-1u << " 0 " << Ny-1u << " 0 " << Nz-1u << "\""
+	     << " Origin=\"" << origin.x << " " << origin.y << " " << origin.z << "\""
+	     << " Spacing=\"" << spacing << " " << spacing << " " << spacing << "\">\n";
+	file << "    <Piece Extent=\"0 " << Nx-1u << " 0 " << Ny-1u << " 0 " << Nz-1u << "\">\n";
+	file << "      <PointData Scalars=\"fill\">\n";
 
 #ifdef SURFACE
-	{ // write fill level
-		const string section_header = "SCALARS fill float 1\nLOOKUP_TABLE default\n";
-		file.write(section_header.c_str(), section_header.length());
-		float* buffer = new float[N];
-		parallel_for(N, [&](ulong n) {
-			buffer[n] = reverse_bytes((float)phi[n]);
-		});
-		file.write((char*)buffer, N*sizeof(float));
-		delete[] buffer;		
+	{ // fill level
+		file << "        <DataArray type=\"Float32\" Name=\"fill\" format=\"ascii\">\n";
+		for(ulong n=0ull; n<N; ++n) {
+			float v = phi[n];
+			if(v < 0.0f) v = 0.0f;
+			if(v > 1.0f) v = 1.0f;
+			file << v << " ";
+			if(n%20ull==19ull) file << "\n";
+		}
+		file << "\n        </DataArray>\n";
 	}
 #endif // SURFACE
-	
-	{ // write cell type
-		const string section_header = "SCALARS cell_type unsigned_char 1\nLOOKUP_TABLE default\n";
-		file.write(section_header.c_str(), section_header.length());
-		uchar* buffer = new uchar[N];
-		parallel_for(N, [&](ulong n) {
-			buffer[n] = flags[n];
-		});
-		file.write((char*)buffer, N*sizeof(uchar));
-		delete[] buffer;
+
+	{ // cell type
+		file << "        <DataArray type=\"Int32\" Name=\"cell_type\" format=\"ascii\">\n";
+		for(ulong n=0ull; n<N; ++n) {
+			file << (int)flags[n] << " ";
+			if(n%20ull==19ull) file << "\n";
+		}
+		file << "\n        </DataArray>\n";
 	}
 
+	file << "      </PointData>\n";
+	file << "    </Piece>\n";
+	file << "  </ImageData>\n";
+	file << "</VTKFile>\n";
 	file.close();
+
 	info.allow_printing.lock();
-	print_info("File \""+filename+"\" saved.");
+	print_info("File \""+output+"\" saved.");
 	info.allow_printing.unlock();
 }

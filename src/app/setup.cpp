@@ -6,6 +6,8 @@
  */
 
 #include "setup.hpp"
+#include <atomic>
+#include <thread>
 
 void main_setup() {
 	// ============================================================================
@@ -50,20 +52,35 @@ void main_setup() {
 	double initial_mass = (double)lbm.lbm_domain[0]->compute_total_mass();
 	print_info("Initial total mass: " + to_string((float)initial_mass, 6u));
 
-	const uint log_interval = 100u;
+	const uint log_interval = 1u;
 
 	// Set visualization mode: raytracing for single GPU, rasterizing for multi-GPU
 	lbm.graphics.visualization_modes = lbm.get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
 
 	// VTK export interval
-	const uint vtk_interval = 100u; // Export every 1000 steps
+	const uint vtk_interval = 100u; // export every 100 steps
+	std::atomic_bool vtk_thread_running(true);
+	std::thread vtk_thread([&]() {
+		if (vtk_interval == 0u) return;
+		ulong last_written_t = max_ulong;
+		while (vtk_thread_running) {
+			const ulong t = lbm.get_t();
+			if (t % vtk_interval == 0u && t != last_written_t) {
+				last_written_t = t;
+				lbm.write_vtk("output/dam_break_" + to_string(t) + ".vti");
+			} else {
+				sleep(0.010);
+			}
+		}
+	});
+	vtk_thread.detach();
 
 	// Main simulation loop - run indefinitely
 	while(true) {
 		lbm.run(log_interval);
 
-		if (lbm.get_t() % vtk_interval == 0) {
-			lbm.write_vtk("output/dam_break_" + to_string(lbm.get_t()) + ".vtk");
+		if (lbm.get_t() % vtk_interval == 0u) {
+			lbm.write_vtk("output/dam_break_" + to_string(lbm.get_t()) + ".vti");
 		}
 
 		// Calculate current total mass
