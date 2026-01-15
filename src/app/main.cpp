@@ -82,11 +82,6 @@ void main_label(const double frametime) {
 #else // SURFACE
 			const bool surface = false;
 #endif // SURFACE
-#ifdef PARTICLES
-			const bool particles = true;
-#else // PARTICLES
-			const bool particles = false;
-#endif // PARTICLES
 			const int ox=2, oy=2;
 			int i = 0;
 
@@ -97,23 +92,22 @@ void main_label(const double frametime) {
 			string mode_4 = mode&VIS_Q_CRITERION ? " active " : "inactive";
 			string mode_5 = surface ? (mode&VIS_PHI_RASTERIZE ? " active " : "inactive") : "disabled";
 			string mode_6 = surface&&info.lbm->get_D()==1u ? (mode&VIS_PHI_RAYTRACE ? " active " : "inactive") : "disabled";
-			string mode_7 = particles ? (mode&VIS_PARTICLES ? " active " : "inactive") : "disabled";
 
 			const int sl=info.lbm->graphics.slice_mode, fl=info.lbm->graphics.field_mode;
 			const string sx="x="+alignr(4u, info.lbm->graphics.slice_x), sy="y="+alignr(4u, info.lbm->graphics.slice_y), sz="z="+alignr(4u, info.lbm->graphics.slice_z);
 			string slice = sl==0 ? "      disabled      " : sl==1 ? sx+"|      |      " : sl==2 ? "      |"+sy+"|      " : sl==3 ? "      |      |"+sz : sl==4 ? sx+"|      |"+sz : sl==5 ? sx+"|"+sy+"|"+sz : sl==6 ? "      |"+sy+"|"+sz : sx+"|"+sy+"|      ";
-			string field = fl==0 ? "     velocity u     " : fl==1 ? "     density rho    " : "    temperature T   ";
+			string field = fl==0 ? "     velocity u     " : "     density rho    ";
 
 			draw_label(ox, oy+i, "Keyboard/Mouse Controls: ", c); i+=2*FONT_HEIGHT;
 			draw_label(ox, oy+i, "P ("+string(key_P?"running ":" paused ")+"): start/pause simulation", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "H ("+string(key_H?" shown  ":" hidden ")+"): show/hide help", c); i+=2*FONT_HEIGHT;
-			draw_label(ox, oy+i, "1 ("+mode_1+"): flag wireframe / solid surface (and force vectors on solid cells or surface pressure if the extension is used)", c); i+=FONT_HEIGHT;
+			draw_label(ox, oy+i, "1 ("+mode_1+"): flag wireframe / solid surface", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "2 ("+mode_2+"): velocity field", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "3 ("+mode_3+"): streamlines", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "4 ("+mode_4+"): vorticity / velocity-colored Q-criterion isosurface", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "5 ("+mode_5+"): rasterized free surface", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "6 ("+mode_6+"): raytraced free surface", c); i+=FONT_HEIGHT;
-			draw_label(ox, oy+i, "7 ("+mode_7+"): particles", c); i+=2*FONT_HEIGHT;
+			i+=2*FONT_HEIGHT;
 			draw_label(ox, oy+i, "T: ("+slice+"): toggle slice visualization mode", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "Z: ("+field+"): toggle field visualization mode", c); i+=FONT_HEIGHT;
 			draw_label(ox, oy+i, "Q/E: move slice in slice visualization mode", c); i+=2*FONT_HEIGHT;

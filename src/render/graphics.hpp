@@ -336,7 +336,7 @@ private:
 
 extern Camera camera;
 extern bool key_E, key_G, key_H, key_O, key_P, key_Q, key_T, key_Z; // defined in graphics.cpp
-extern bool key_1, key_2, key_3, key_4, key_5, key_6, key_7, key_8, key_9, key_0; // defined in graphics.cpp
+extern bool key_1, key_2, key_3, key_4, key_5, key_6, key_8, key_9, key_0; // defined in graphics.cpp
 
 #define GRAPHICS_CONSOLE // open console additionally to graphics window
 #define FONT_HEIGHT 11 // default: 11

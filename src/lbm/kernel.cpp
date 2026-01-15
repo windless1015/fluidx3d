@@ -996,17 +996,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 } // calculate_forcing_terms()
 )+"#endif"+R( // VOLUME_FORCE
 
-)+"#ifdef MOVING_BOUNDARIES"+R(
-)+R(void apply_moving_boundaries(float* fhn, const uxx* j, const global float* u, const global uchar* flags) { // apply Dirichlet velocity boundaries if necessary (Krueger p.180, rho_solid=1)
-	uxx ji; // reads velocities of only neighboring boundary cells, which do not change during simulation
-	for(uint i=1u; i<def_velocity_set; i+=2u) { // loop is entirely unrolled by compiler, no unnecessary memory access is happening
-		const float w6 = -6.0f*w(i); // w6 = -2*w_i*rho_wall/c^2, w(i) = w(i+1) if i is odd, rho_wall is assumed as rho_avg=1 (necessary choice to assure mass conservation)
-		ji = j[i+1u]; fhn[i   ] = (flags[ji]&TYPE_BO)==TYPE_S ? fma(w6, c(i+1u)*u[ji]+c(def_velocity_set+i+1u)*u[def_N+(ulong)ji]+c(2u*def_velocity_set+i+1u)*u[2ul*def_N+(ulong)ji], fhn[i   ]) : fhn[i   ]; // boundary : regular
-		ji = j[i   ]; fhn[i+1u] = (flags[ji]&TYPE_BO)==TYPE_S ? fma(w6, c(i   )*u[ji]+c(def_velocity_set+i   )*u[def_N+(ulong)ji]+c(2u*def_velocity_set+i   )*u[2ul*def_N+(ulong)ji], fhn[i+1u]) : fhn[i+1u];
-	}
-} // apply_moving_boundaries()
-)+"#endif"+R( // MOVING_BOUNDARIES
-
 )+"#ifdef SURFACE"+R(
 )+R(void average_neighbors_non_gas(const uxx n, const global float* rho, const global float* u, const global uchar* flags, float* rhon, float* uxn, float* uyn, float* uzn) { // calculate average density and velocity of neighbors of cell n
 	uxx j[def_velocity_set]; // neighbor indices
@@ -1236,20 +1225,11 @@ string opencl_c_container() { return R( // ########################## begin of O
 			u[    def_N+(ulong)n] = 0.0f;
 			u[2ul*def_N+(ulong)n] = 0.0f;
 		}
-)+"#ifndef MOVING_BOUNDARIES"+R(
 		if(flagsn_bo==TYPE_S) {
 			u[                 n] = 0.0f; // reset velocity for all solid lattice points
 			u[    def_N+(ulong)n] = 0.0f;
 			u[2ul*def_N+(ulong)n] = 0.0f;
 		}
-)+"#else"+R( // MOVING_BOUNDARIES
-	} else if(flagsn_bo!=TYPE_E) { // local lattice point is not solid and not equilibrium boundary
-		bool next_to_moving_boundary = false;
-		for(uint i=1u; i<def_velocity_set; i++) {
-			next_to_moving_boundary = next_to_moving_boundary||((flagsj[i]&TYPE_BO)==TYPE_S&&(u[j[i]]!=0.0f||u[def_N+(ulong)j[i]]!=0.0f||u[2ul*def_N+(ulong)j[i]]!=0.0f));
-		}
-		flags[n] = flagsn = next_to_moving_boundary ? flagsn|TYPE_MS : flagsn&~TYPE_MS; // mark/unmark cells next to TYPE_S cells with velocity!=0 with TYPE_MS
-)+"#endif"+R( // MOVING_BOUNDARIES
 	}
 	float feq[def_velocity_set]; // f_equilibrium
 	calculate_f_eq(rho[n], u[n], u[def_N+(ulong)n], u[2ul*def_N+(ulong)n], feq);
@@ -1288,32 +1268,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 	store_f(n, feq, fi, j, 1ul); // write to fi
 } // initialize()
 
-)+"#ifdef MOVING_BOUNDARIES"+R(
-)+R(kernel void update_moving_boundaries(const global float* u, global uchar* flags) { // mark/unmark cells next to TYPE_S cells with velocity!=0 with TYPE_MS
-	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
-	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute update_moving_boundaries() on halo
-	const uchar flagsn = flags[n];
-	const uchar flagsn_bo = flagsn&TYPE_BO; // extract boundary flags
-	uxx j[def_velocity_set]; // neighbor indices
-	neighbors(n, j); // calculate neighbor indices
-	uchar flagsj[def_velocity_set]; // cache neighbor flags for multiple readings
-	for(uint i=1u; i<def_velocity_set; i++) flagsj[i] = flags[j[i]];
-	if(flagsn_bo!=TYPE_S&&flagsn_bo!=TYPE_E&&!(flagsn&TYPE_T)) { // local lattice point is not solid and not equilibrium boundary and not temperature boundary
-		bool next_to_moving_boundary = false;
-		for(uint i=1u; i<def_velocity_set; i++) {
-			next_to_moving_boundary = next_to_moving_boundary||((u[j[i]]!=0.0f||u[def_N+(ulong)j[i]]!=0.0f||u[2ul*def_N+(ulong)j[i]]!=0.0f)&&(flagsj[i]&TYPE_BO)==TYPE_S);
-		}
-		flags[n] = next_to_moving_boundary ? flagsn|TYPE_MS : flagsn&~TYPE_MS; // mark/unmark cells next to TYPE_S cells with velocity!=0 with TYPE_MS
-	}
-} // update_moving_boundaries()
-)+"#endif"+R( // MOVING_BOUNDARIES
-
-
-
 )+R(kernel void stream_collide)+"("+R(global fpxx* fi, global float* rho, global float* u, global uchar* flags, const ulong t, const float fx, const float fy, const float fz // ) { // main LBM kernel
-)+"#ifdef FORCE_FIELD"+R(
-	, const global float* F // argument order is important
-)+"#endif"+R( // FORCE_FIELD
 )+"#ifdef SURFACE"+R(
 	, const global float* mass // argument order is important
 )+"#endif"+R( // SURFACE
@@ -1331,33 +1286,10 @@ string opencl_c_container() { return R( // ########################## begin of O
 	float fhn[def_velocity_set]; // local DDFs
 	load_f(n, fhn, fi, j, t); // perform streaming (part 2)
 
-)+"#ifdef MOVING_BOUNDARIES"+R(
-	if(flagsn_bo==TYPE_MS) apply_moving_boundaries(fhn, j, u, flags); // apply Dirichlet velocity boundaries if necessary (reads velocities of only neighboring boundary cells, which do not change during simulation)
-)+"#endif"+R( // MOVING_BOUNDARIES
-
 	float rhon, uxn, uyn, uzn; // calculate local density and velocity for collision
-)+"#ifndef EQUILIBRIUM_BOUNDARIES"+R(
 	calculate_rho_u(fhn, &rhon, &uxn, &uyn, &uzn); // calculate density and velocity fields from fi
-)+"#else"+R( // EQUILIBRIUM_BOUNDARIES
-	if(flagsn_bo==TYPE_E) {
-		rhon = rho[               n]; // apply preset velocity/density
-		uxn  = u[                 n];
-		uyn  = u[    def_N+(ulong)n];
-		uzn  = u[2ul*def_N+(ulong)n];
-	} else {
-		calculate_rho_u(fhn, &rhon, &uxn, &uyn, &uzn); // calculate density and velocity fields from fi
-	}
-)+"#endif"+R( // EQUILIBRIUM_BOUNDARIES
 	float fxn=fx, fyn=fy, fzn=fz; // force starts as constant volume force, can be modified before call of calculate_forcing_terms(...)
 	float Fin[def_velocity_set]; // forcing terms
-
-)+"#ifdef FORCE_FIELD"+R(
-	{ // separate block to avoid variable name conflicts
-		fxn += F[                 n]; // apply force field
-		fyn += F[    def_N+(ulong)n];
-		fzn += F[2ul*def_N+(ulong)n];
-	}
-)+"#endif"+R( // FORCE_FIELD
 
 )+"#ifdef SURFACE"+R(
 	if(flagsn_su==TYPE_I) { // cell was interface, eventually initiate flag change
@@ -1390,54 +1322,23 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#endif"+R( // VOLUME_FORCE
 	}
 
-)+"#ifndef EQUILIBRIUM_BOUNDARIES"+R(
 )+"#ifdef UPDATE_FIELDS"+R(
 	rho[               n] = rhon; // update density field
 	u[                 n] = uxn; // update velocity field
 	u[    def_N+(ulong)n] = uyn;
 	u[2ul*def_N+(ulong)n] = uzn;
 )+"#endif"+R( // UPDATE_FIELDS
-)+"#else"+R( // EQUILIBRIUM_BOUNDARIES
-)+"#ifdef UPDATE_FIELDS"+R(
-	if(flagsn_bo!=TYPE_E) { // only update fields for non-TYPE_E cells
-		rho[               n] = rhon; // update density field
-		u[                 n] = uxn; // update velocity field
-		u[    def_N+(ulong)n] = uyn;
-		u[2ul*def_N+(ulong)n] = uzn;
-	}
-)+"#endif"+R( // UPDATE_FIELDS
-)+"#endif"+R( // EQUILIBRIUM_BOUNDARIES
 
 	float feq[def_velocity_set]; // equilibrium DDFs
 	calculate_f_eq(rhon, uxn, uyn, uzn, feq); // calculate equilibrium DDFs
 	float w = def_w; // LBM relaxation rate w = dt/tau = dt/(nu/c^2+dt/2) = 1/(3*nu+1/2)
-
-)+"#ifdef SUBGRID"+R(
-	{ // Smagorinsky-Lilly subgrid turbulence model, source: https://arxiv.org/pdf/comp-gas/9401004.pdf, in the eq. below (26), it is "tau_0" not "nu_0", and "sqrt(2)/rho" (they call "rho" "n") is missing
-		const float tau0 = 1.0f/w; // source 2: https://youtu.be/V8ydRrdCzl0
-		float Hxx=0.0f, Hyy=0.0f, Hzz=0.0f, Hxy=0.0f, Hxz=0.0f, Hyz=0.0f; // non-equilibrium stress tensor
-		for(uint i=1u; i<def_velocity_set; i++) {
-			const float fneqi = fhn[i]-feq[i];
-			const float cxi=c(i), cyi=c(def_velocity_set+i), czi=c(2u*def_velocity_set+i);
-			Hxx += cxi*cxi*fneqi; //Hyx += cyi*cxi*fneqi; Hzx += czi*cxi*fneqi; // symmetric tensor
-			Hxy += cxi*cyi*fneqi; Hyy += cyi*cyi*fneqi; //Hzy += czi*cyi*fneqi;
-			Hxz += cxi*czi*fneqi; Hyz += cyi*czi*fneqi; Hzz += czi*czi*fneqi;
-		}
-		const float Q = sq(Hxx)+sq(Hyy)+sq(Hzz)+2.0f*(sq(Hxy)+sq(Hxz)+sq(Hyz)); // Q = H*H, turbulent eddy viscosity nut = (C*Delta)^2*|S|, intensity of local strain rate tensor |S|=sqrt(2*S*S)
-		w = 2.0f/(tau0+sqrt(sq(tau0)+0.76421222f*sqrt(Q)/rhon)); // 0.76421222 = 18*sqrt(2)*(C*Delta)^2, C = 1/pi*(2/(3*CK))^(3/4) = Smagorinsky-Lilly constant, CK = 3/2 = Kolmogorov constant, Delta = 1 = lattice constant
-	} // modity LBM relaxation rate by increasing effective viscosity in regions of high strain rate (add turbulent eddy viscosity), nu_eff = nu_0+nu_t
-)+"#endif"+R( // SUBGRID
 
 )+"#if defined(SRT)"+R(
 )+"#ifdef VOLUME_FORCE"+R(
 	const float c_tau = fma(w, -0.5f, 1.0f);
 	for(uint i=0u; i<def_velocity_set; i++) Fin[i] *= c_tau;
 )+"#endif"+R( // VOLUME_FORCE
-)+"#ifndef EQUILIBRIUM_BOUNDARIES"+R(
 	for(uint i=0u; i<def_velocity_set; i++) fhn[i] = fma(1.0f-w, fhn[i], fma(w, feq[i], Fin[i])); // perform collision (SRT)
-)+"#else"+R( // EQUILIBRIUM_BOUNDARIES
-	for(uint i=0u; i<def_velocity_set; i++) fhn[i] = flagsn_bo==TYPE_E ? feq[i] : fma(1.0f-w, fhn[i], fma(w, feq[i], Fin[i])); // perform collision (SRT)
-)+"#endif"+R( // EQUILIBRIUM_BOUNDARIES
 )+"#elif defined(TRT)"+R(
 	const float wp = w; // TRT: inverse of "+" relaxation time
 	const float wm = 1.0f/(0.1875f/(1.0f/w-0.5f)+0.5f); // TRT: inverse of "-" relaxation time wm = 1.0f/(0.1875f/(3.0f*nu)+0.5f), nu = (1.0f/w-0.5f)/3.0f;
@@ -1461,11 +1362,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 		feb[i   ] = feq[i+1u];
 		feb[i+1u] = feq[i   ];
 	}
-)+"#ifndef EQUILIBRIUM_BOUNDARIES"+R(
 	for(uint i=0u; i<def_velocity_set; i++) fhn[i] = fma(0.5f*wp, feq[i]-fhn[i]+feb[i]-fhb[i], fma(0.5f*wm, feq[i]-feb[i]-fhn[i]+fhb[i], fhn[i]+Fin[i])); // perform collision (TRT)
-)+"#else"+R( // EQUILIBRIUM_BOUNDARIES
-	for(uint i=0u; i<def_velocity_set; i++) fhn[i] = flagsn_bo==TYPE_E ? feq[i] : fma(0.5f*wp, feq[i]-fhn[i]+feb[i]-fhb[i], fma(0.5f*wm, feq[i]-feb[i]-fhn[i]+fhb[i], fhn[i]+Fin[i])); // perform collision (TRT)
-)+"#endif"+R( // EQUILIBRIUM_BOUNDARIES
 )+"#endif"+R( // TRT
 
 	store_f(n, fhn, fi, j, t); // perform streaming (part 1)
@@ -1497,18 +1394,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 		float phij[def_velocity_set]; // cache fill level of neighbor lattice points
 		for(uint i=1u; i<def_velocity_set; i++) phij[i] = phi[j[i]]; // cache fill level of neighbor lattice points
 		float rhon, uxn, uyn, uzn, rho_laplace=0.0f; // no surface tension if rho_laplace is not overwritten later
-)+"#ifndef EQUILIBRIUM_BOUNDARIES"+R(
 		calculate_rho_u(fon, &rhon, &uxn, &uyn, &uzn); // calculate density and velocity fields from fon (not fhn)
-)+"#else"+R( // EQUILIBRIUM_BOUNDARIES
-		if(flagsn_bo==TYPE_E) {
-			rhon = rho[               n]; // apply preset velocity/density
-			uxn  = u[                 n];
-			uyn  = u[    def_N+(ulong)n];
-			uzn  = u[2ul*def_N+(ulong)n];
-		} else {
-			calculate_rho_u(fon, &rhon, &uxn, &uyn, &uzn); // calculate density and velocity fields from fon (not fhn)
-		}
-)+"#endif"+R( // EQUILIBRIUM_BOUNDARIES
 		uxn = clamp(uxn, -def_c, def_c); // limit velocity (for stability purposes)
 		uyn = clamp(uyn, -def_c, def_c);
 		uzn = clamp(uzn, -def_c, def_c);
@@ -1659,10 +1545,6 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 )+"#endif"+R( // SURFACE
 
 )+R(kernel void update_fields)+"("+R(const global fpxx* fi, global float* rho, global float* u, const global uchar* flags, const ulong t, const float fx, const float fy, const float fz // ) { // calculate fields from DDFs
-)+"#ifdef FORCE_FIELD"+R(
-	, const global float* F // argument order is important
-)+"#endif"+R( // FORCE_FIELD
-
 )+") {"+R( // update_fields()
 	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute update_fields() on halo
@@ -1675,22 +1557,9 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	float fhn[def_velocity_set]; // local DDFs
 	load_f(n, fhn, fi, j, t); // perform streaming (part 2)
 
-)+"#ifdef MOVING_BOUNDARIES"+R(
-	if(flagsn_bo==TYPE_MS) apply_moving_boundaries(fhn, j, u, flags); // apply Dirichlet velocity boundaries if necessary (reads velocities of only neighboring boundary cells, which do not change during simulation)
-)+"#endif"+R( // MOVING_BOUNDARIES
-
 	float rhon, uxn, uyn, uzn; // calculate local density and velocity for collision
 	calculate_rho_u(fhn, &rhon, &uxn, &uyn, &uzn); // calculate density and velocity fields from fi
 	float fxn=fx, fyn=fy, fzn=fz; // force starts as constant volume force, can be modified before call of calculate_forcing_terms(...)
-
-)+"#ifdef FORCE_FIELD"+R(
-	{ // separate block to avoid variable name conflicts
-		fxn += F[                 n]; // apply force field
-		fyn += F[    def_N+(ulong)n];
-		fzn += F[2ul*def_N+(ulong)n];
-	}
-)+"#endif"+R( // FORCE_FIELD
-
 
 
 	{ // separate block to avoid variable name conflicts
@@ -1706,332 +1575,16 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 )+"#endif"+R( // VOLUME_FORCE
 	}
 
-)+"#ifndef EQUILIBRIUM_BOUNDARIES"+R(
 	rho[               n] = rhon; // update density field
 	u[                 n] = uxn; // update velocity field
 	u[    def_N+(ulong)n] = uyn;
 	u[2ul*def_N+(ulong)n] = uzn;
-)+"#else"+R( // EQUILIBRIUM_BOUNDARIES
-	if(flagsn_bo!=TYPE_E) { // only update fields for non-TYPE_E cells
-		rho[               n] = rhon; // update density field
-		u[                 n] = uxn; // update velocity field
-		u[    def_N+(ulong)n] = uyn;
-		u[2ul*def_N+(ulong)n] = uzn;
-	}
-)+"#endif"+R( // EQUILIBRIUM_BOUNDARIES
 } // update_fields()
-
-)+"#ifdef FORCE_FIELD"+R(
-)+R(kernel void update_force_field(const global fpxx* fi, const global uchar* flags, const ulong t, global float* F) { // calculate force from the fluid on solid boundaries from fi directly
-	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
-	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute update_force_field() on halo
-	if((flags[n]&TYPE_BO)!=TYPE_S) return; // only continue for solid boundary cells
-	uxx j[def_velocity_set]; // neighbor indices
-	neighbors(n, j); // calculate neighbor indices
-	float fhn[def_velocity_set]; // local DDFs
-	load_f(n, fhn, fi, j, t); // perform streaming (part 2)
-	float Fb=1.0f, fx=0.0f, fy=0.0f, fz=0.0f;
-	calculate_rho_u(fhn, &Fb, &fx, &fy, &fz); // abuse calculate_rho_u() method for calculating force
-	F[                 n] = 2.0f*fx*Fb; // 2 times because fi are reflected on solid boundary cells (bounced-back)
-	F[    def_N+(ulong)n] = 2.0f*fy*Fb;
-	F[2ul*def_N+(ulong)n] = 2.0f*fz*Fb;
-} // update_force_field()
-)+R(kernel void reset_force_field(global float* F) { // reset force field
-	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
-	if(n>=(uxx)def_N) return; // execute reset_force_field() also on halo
-	F[                 n] = 0.0f;
-	F[    def_N+(ulong)n] = 0.0f;
-	F[2ul*def_N+(ulong)n] = 0.0f;
-} // reset_force_field()
-)+R(void atomic_add_f(volatile global float* addr, const float val) {
-)+"#if cl_nv_compute_capability>=20"+R( // use hardware-supported atomic addition on Nvidia GPUs with inline PTX assembly
-	float ret;)+"asm volatile(\"atom.global.add.f32\t%0,[%1],%2;\":\"=f\"(ret):\"l\"(addr),\"f\"(val):\"memory\");"+R(
-)+"#elif defined(__opencl_c_ext_fp32_global_atomic_add)"+R( // use hardware-supported atomic addition on some Intel GPUs
-	atomic_fetch_add_explicit((volatile global atomic_float*)addr, val, memory_order_relaxed);
-)+"#elif __has_builtin(__builtin_amdgcn_global_atomic_fadd_f32)"+R( // use hardware-supported atomic addition on some AMD GPUs
-	__builtin_amdgcn_global_atomic_fadd_f32(addr, val);
-)+"#else"+R( // fallback emulation: https://forums.developer.nvidia.com/t/atomicadd-float-float-atomicmul-float-float/14639/5
-	float old = val; while((old=atomic_xchg(addr, atomic_xchg(addr, 0.0f)+old))!=0.0f);
-)+"#endif"+R(
-}
-)+R(kernel void object_center_of_mass(const global uchar* flags, const uchar flag_marker, volatile global float* object_sum) {
-	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
-	const uint lid = get_local_id(0); // local memory reduction of cl_workgroup_size:1
-	local float3 cache[cl_workgroup_size];
-	local uint cells[cl_workgroup_size];
-	const uint is_part_of_object = (uint)(n<(uxx)def_N&&flags[n]==flag_marker);
-	cache[lid] = is_part_of_object ? position(coordinates(n)) : (float3)(0.0f, 0.0f, 0.0f);
-	cells[lid] = is_part_of_object;
-	barrier(CLK_GLOBAL_MEM_FENCE);
-	for(uint s=1u; s<cl_workgroup_size; s*=2u) {
-		if(lid%(2u*s)==0u) {
-			cache[lid] += cache[lid+s];
-			cells[lid] += cells[lid+s];
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-	const uint local_cells = cells[0];
-	if(lid==0u&&local_cells>0u) { // global memory reduction with atomic addition of local_sum
-		const float3 local_sum = cache[0];
-		atomic_add_f(&object_sum[0], local_sum.x);
-		atomic_add_f(&object_sum[1], local_sum.y);
-		atomic_add_f(&object_sum[2], local_sum.z);
-		atomic_add((volatile global uint*)&object_sum[3], local_cells);
-	}
-} // object_center_of_mass()
-)+R(kernel void object_force(const global float* F, const global uchar* flags, const uchar flag_marker, volatile global float* object_sum) {
-	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
-	const uint lid = get_local_id(0); // local memory reduction of cl_workgroup_size:1
-	local float3 cache[cl_workgroup_size];
-	cache[lid] = n<(uxx)def_N&&flags[n]==flag_marker ? load3(n, F) : (float3)(0.0f, 0.0f, 0.0f);
-	barrier(CLK_GLOBAL_MEM_FENCE);
-	for(uint s=1u; s<cl_workgroup_size; s*=2u) {
-		if(lid%(2u*s)==0u) cache[lid] += cache[lid+s];
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-	if(lid==0u) { // global memory reduction with atomic addition of local_sum
-		const float3 local_sum = cache[0];
-		if(local_sum.x!=0.0f) atomic_add_f(&object_sum[0], local_sum.x);
-		if(local_sum.y!=0.0f) atomic_add_f(&object_sum[1], local_sum.y);
-		if(local_sum.z!=0.0f) atomic_add_f(&object_sum[2], local_sum.z);
-	}
-} // object_force()
-)+R(kernel void object_torque(const global float* F, const global uchar* flags, const uchar flag_marker, const float cx, const float cy, const float cz, volatile global float* object_sum) {
-	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
-	const uint lid = get_local_id(0); // local memory reduction of cl_workgroup_size:1
-	local float3 cache[cl_workgroup_size];
-	cache[lid] = n<(uxx)def_N&&flags[n]==flag_marker ? cross(position(coordinates(n))-(float3)(cx, cy, cz), load3(n, F)) : (float3)(0.0f, 0.0f, 0.0f);
-	barrier(CLK_GLOBAL_MEM_FENCE);
-	for(uint s=1u; s<cl_workgroup_size; s*=2u) {
-		if(lid%(2u*s)==0u) cache[lid] += cache[lid+s];
-		barrier(CLK_LOCAL_MEM_FENCE);
-	}
-	if(lid==0u) { // global memory reduction with atomic addition of local_sum
-		const float3 local_sum = cache[0];
-		if(local_sum.x!=0.0f) atomic_add_f(&object_sum[0], local_sum.x);
-		if(local_sum.y!=0.0f) atomic_add_f(&object_sum[1], local_sum.y);
-		if(local_sum.z!=0.0f) atomic_add_f(&object_sum[2], local_sum.z);
-	}
-} // object_torque()
-)+"#endif"+R( // FORCE_FIELD
-
-)+"#ifdef PARTICLES"+R(
-)+"#ifdef FORCE_FIELD"+R(
-)+R(void spread_force(volatile global float* F, const float3 p, const float3 Fn) {
-	const float xa=p.x-0.5f+1.5f*(float)def_Nx, ya=p.y-0.5f+1.5f*(float)def_Ny, za=p.z-0.5f+1.5f*(float)def_Nz; // subtract lattice offsets
-	const uint xb=(uint)xa, yb=(uint)ya, zb=(uint)za; // integer casting to find bottom left corner
-	const float x1=xa-(float)xb, y1=ya-(float)yb, z1=za-(float)zb; // calculate interpolation factors
-	for(uint c=0u; c<8u; c++) { // count over eight corner points
-		const uint i=(c&0x04u)>>2, j=(c&0x02u)>>1, k=c&0x01u; // disassemble c into corner indices ijk
-		const uint x=(xb+i)%def_Nx, y=(yb+j)%def_Ny, z=(zb+k)%def_Nz; // calculate corner lattice positions
-		const uxx n = (uxx)x+(uxx)(y+z*def_Ny)*(uxx)def_Nx; // calculate lattice linear index
-		const float d = (1.0f-fabs(x1-(float)i))*(1.0f-fabs(y1-(float)j))*(1.0f-fabs(z1-(float)k)); // force spreading
-		atomic_add_f(&F[                 n], Fn.x*d); // F[                 n] += Fn.x*d;
-		atomic_add_f(&F[    def_N+(ulong)n], Fn.y*d); // F[    def_N+(ulong)n] += Fn.y*d;
-		atomic_add_f(&F[2ul*def_N+(ulong)n], Fn.z*d); // F[2ul*def_N+(ulong)n] += Fn.z*d;
-	}
-} // spread_force()
-)+"#endif"+R( // FORCE_FIELD
-
-)+R(float3 particle_boundary_force(const float3 p, const global uchar* flags) { // normalized pseudo-force to prevent particles from entering solid boundaries or exiting fluid phase
-	const float xa=p.x-0.5f+1.5f*(float)def_Nx, ya=p.y-0.5f+1.5f*(float)def_Ny, za=p.z-0.5f+1.5f*(float)def_Nz; // subtract lattice offsets
-	const uint xb=(uint)xa, yb=(uint)ya, zb=(uint)za; // integer casting to find bottom left corner
-	const float x1=xa-(float)xb, y1=ya-(float)yb, z1=za-(float)zb; // calculate interpolation factors
-	float3 boundary_force = (float3)(0.0f, 0.0f, 0.0f);
-	float boundary_distance = 2.0f;
-	for(uint c=0u; c<8u; c++) { // count over eight corner points
-		const uint i=(c&0x04u)>>2, j=(c&0x02u)>>1, k=c&0x01u; // disassemble c into corner indices ijk
-		const uint x=(xb+i)%def_Nx, y=(yb+j)%def_Ny, z=(zb+k)%def_Nz; // calculate corner lattice positions
-		const uxx n = (uxx)x+(uxx)(y+z*def_Ny)*(uxx)def_Nx; // calculate lattice linear index
-		if(flags[n]&(TYPE_S|TYPE_G)) {
-			boundary_force += (float3)(0.5f, 0.5f, 0.5f)-(float3)((float)i, (float)j, (float)k);
-			boundary_distance = fmin(boundary_distance, length((float3)(x1, y1, z1)-(float3)((float)i, (float)j, (float)k)));
-		}
-	}
-	const float particle_radius = 0.5f; // has to be between 0.0f and 0.5f, default: 0.5f (hydrodynamic radius)
-	return boundary_distance-0.5f<particle_radius ? normalize(boundary_force) : (float3)(0.0f, 0.0f, 0.0f);
-} // particle_boundary_force()
-
-)+R(kernel void integrate_particles)+"("+R(global float* particles, const global float* u, const global uchar* flags, const float time_step_multiplicator // ) {
-)+"#ifdef FORCE_FIELD"+R(
-	, volatile global float* F, const float fx, const float fy, const float fz
-)+"#endif"+R( // FORCE_FIELD
-)+") {"+R( // integrate_particles()
-	const uxx n = get_global_id(0); // index of membrane points
-	if(n>=(uxx)def_particles_N) return;
-	const float3 p0 = (float3)(particles[n], particles[def_particles_N+(ulong)n], particles[2ul*def_particles_N+(ulong)n]); // cache particle position
-)+"#ifdef FORCE_FIELD"+R(
-	if(def_particles_rho!=1.0f) {
-		const float drho = def_particles_rho-1.0f; // density difference leads to particle buoyancy
-		float3 Fn = (float3)(fx*drho, fy*drho, fz*drho); // F = F_p+F_f = (m_p-m_f)*g = (rho_p-rho_f)*g*V
-		spread_force(F, p0, Fn); // do force spreading
-	}
-)+"#endif"+R( // FORCE_FIELD
-	const float3 p0_mirrored = mirror_position(p0);
-	float3 un = interpolate_u(p0_mirrored, u); // trilinear interpolation of velocity at point p
-	un = (un+length(un)*particle_boundary_force(p0_mirrored, flags))*time_step_multiplicator;
-	const float3 p = mirror_position(p0+un); // advect particles
-	particles[                           n] = p.x;
-	particles[    def_particles_N+(ulong)n] = p.y;
-	particles[2ul*def_particles_N+(ulong)n] = p.z;
-} // integrate_particles()
-)+"#endif"+R( // PARTICLES
-
-
 
 )+R(uint get_area(const uint direction) {
 	const uint A[3] = { def_Ax, def_Ay, def_Az };
 	return A[direction];
 }
-)+R(uxx index_extract_p(const uint a, const uint direction) {
-	const uint3 coordinates[3] = { (uint3)(def_Nx-2u, a%def_Ny, a/def_Ny), (uint3)(a/def_Nz, def_Ny-2u, a%def_Nz), (uint3)(a%def_Nx, a/def_Nx, def_Nz-2u) };
-	return index(coordinates[direction]);
-}
-)+R(uxx index_extract_m(const uint a, const uint direction) {
-	const uint3 coordinates[3] = { (uint3)(       1u, a%def_Ny, a/def_Ny), (uint3)(a/def_Nz,        1u, a%def_Nz), (uint3)(a%def_Nx, a/def_Nx,        1u) };
-	return index(coordinates[direction]);
-}
-)+R(uxx index_insert_p(const uint a, const uint direction) {
-	const uint3 coordinates[3] = { (uint3)(def_Nx-1u, a%def_Ny, a/def_Ny), (uint3)(a/def_Nz, def_Ny-1u, a%def_Nz), (uint3)(a%def_Nx, a/def_Nx, def_Nz-1u) };
-	return index(coordinates[direction]);
-}
-)+R(uxx index_insert_m(const uint a, const uint direction) {
-	const uint3 coordinates[3] = { (uint3)(       0u, a%def_Ny, a/def_Ny), (uint3)(a/def_Nz,        0u, a%def_Nz), (uint3)(a%def_Nx, a/def_Nx,        0u) };
-	return index(coordinates[direction]);
-}
-
-)+R(uint index_transfer(const uint side_i) {
-	const uchar index_transfer_data[2u*def_dimensions*def_transfers] = {
-)+"#if defined(D2Q9)"+R(
-		1,  5,  7, // xp
-		2,  6,  8, // xm
-		3,  5,  8, // yp
-		4,  6,  7  // ym
-)+"#elif defined(D3Q15)"+R(
-		1,  7, 14,  9, 11, // xp
-		2,  8, 13, 10, 12, // xm
-		3,  7, 12,  9, 13, // yp
-		4,  8, 11, 10, 14, // ym
-		5,  7, 10, 11, 13, // zp
-		6,  8,  9, 12, 14  // zm
-)+"#elif defined(D3Q19)"+R(
-		1,  7, 13,  9, 15, // xp
-		2,  8, 14, 10, 16, // xm
-		3,  7, 14, 11, 17, // yp
-		4,  8, 13, 12, 18, // ym
-		5,  9, 16, 11, 18, // zp
-		6, 10, 15, 12, 17  // zm
-)+"#elif defined(D3Q27)"+R(
-		1,  7, 13,  9, 15, 19, 26, 21, 23, // xp
-		2,  8, 14, 10, 16, 20, 25, 22, 24, // xm
-		3,  7, 14, 11, 17, 19, 24, 21, 25, // yp
-		4,  8, 13, 12, 18, 20, 23, 22, 26, // ym
-		5,  9, 16, 11, 18, 19, 22, 23, 25, // zp
-		6, 10, 15, 12, 17, 20, 21, 24, 26  // zm
-)+"#endif"+R( // D3Q27
-	};
-	return (uint)index_transfer_data[side_i];
-}
-)+R(void extract_fi(const uint a, const uint A, const uxx n, const uint side, const ulong t, global fpxx_copy* transfer_buffer, const global fpxx_copy* fi) {
-	uxx j[def_velocity_set]; // neighbor indices
-	neighbors(n, j); // calculate neighbor indices
-	for(uint b=0u; b<def_transfers; b++) {
-		const uint i = index_transfer(side*def_transfers+b);
-		const ulong index = index_f(i%2u ? j[i] : n, t%2ul ? (i%2u ? i+1u : i-1u) : i); // Esoteric-Pull: standard store, or streaming part 1/2
-		transfer_buffer[b*A+a] = fi[index]; // fpxx_copy allows direct copying without decompression+compression
-	}
-}
-)+R(void insert_fi(const uint a, const uint A, const uxx n, const uint side, const ulong t, const global fpxx_copy* transfer_buffer, global fpxx_copy* fi) {
-	uxx j[def_velocity_set]; // neighbor indices
-	neighbors(n, j); // calculate neighbor indices
-	for(uint b=0u; b<def_transfers; b++) {
-		const uint i = index_transfer(side*def_transfers+b);
-		const ulong index = index_f(i%2u ? n : j[i-1u], t%2ul ? i : (i%2u ? i+1u : i-1u)); // Esoteric-Pull: standard load, or streaming part 2/2
-		fi[index] = transfer_buffer[b*A+a]; // fpxx_copy allows direct copying without decompression+compression
-	}
-}
-)+R(kernel void transfer_extract_fi(const uint direction, const ulong t, global fpxx_copy* transfer_buffer_p, global fpxx_copy* transfer_buffer_m, const global fpxx_copy* fi) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	extract_fi(a, A, index_extract_p(a, direction), 2u*direction+0u, t, transfer_buffer_p, fi);
-	extract_fi(a, A, index_extract_m(a, direction), 2u*direction+1u, t, transfer_buffer_m, fi);
-}
-)+R(kernel void transfer__insert_fi(const uint direction, const ulong t, const global fpxx_copy* transfer_buffer_p, const global fpxx_copy* transfer_buffer_m, global fpxx_copy* fi) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	insert_fi(a, A, index_insert_p(a, direction), 2u*direction+0u, t, transfer_buffer_p, fi);
-	insert_fi(a, A, index_insert_m(a, direction), 2u*direction+1u, t, transfer_buffer_m, fi);
-}
-
-)+R(void extract_rho_u_flags(const uint a, const uint A, const uxx n, global char* transfer_buffer, const global float* rho, const global float* u, const global uchar* flags) {
-	((global float*)transfer_buffer)[      a] = rho[               n];
-	((global float*)transfer_buffer)[    A+a] = u[                 n];
-	((global float*)transfer_buffer)[ 2u*A+a] = u[    def_N+(ulong)n];
-	((global float*)transfer_buffer)[ 3u*A+a] = u[2ul*def_N+(ulong)n];
-	((global uchar*)transfer_buffer)[16u*A+a] = flags[             n];
-}
-)+R(void insert_rho_u_flags(const uint a, const uint A, const uxx n, const global char* transfer_buffer, global float* rho, global float* u, global uchar* flags) {
-	rho[               n] = ((const global float*)transfer_buffer)[      a];
-	u[                 n] = ((const global float*)transfer_buffer)[    A+a];
-	u[    def_N+(ulong)n] = ((const global float*)transfer_buffer)[ 2u*A+a];
-	u[2ul*def_N+(ulong)n] = ((const global float*)transfer_buffer)[ 3u*A+a];
-	flags[             n] = ((const global uchar*)transfer_buffer)[16u*A+a];
-}
-)+R(kernel void transfer_extract_rho_u_flags(const uint direction, const ulong t, global char* transfer_buffer_p, global char* transfer_buffer_m, const global float* rho, const global float* u, const global uchar* flags) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	extract_rho_u_flags(a, A, index_extract_p(a, direction), transfer_buffer_p, rho, u, flags);
-	extract_rho_u_flags(a, A, index_extract_m(a, direction), transfer_buffer_m, rho, u, flags);
-}
-)+R(kernel void transfer__insert_rho_u_flags(const uint direction, const ulong t, const global char* transfer_buffer_p, const global char* transfer_buffer_m, global float* rho, global float* u, global uchar* flags) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	insert_rho_u_flags(a, A, index_insert_p(a, direction), transfer_buffer_p, rho, u, flags);
-	insert_rho_u_flags(a, A, index_insert_m(a, direction), transfer_buffer_m, rho, u, flags);
-}
-
-)+R(kernel void transfer_extract_flags(const uint direction, const ulong t, global uchar* transfer_buffer_p, global uchar* transfer_buffer_m, const global uchar* flags) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	transfer_buffer_p[a] = flags[index_extract_p(a, direction)];
-	transfer_buffer_m[a] = flags[index_extract_m(a, direction)];
-}
-)+R(kernel void transfer__insert_flags(const uint direction, const ulong t, const global uchar* transfer_buffer_p, const global uchar* transfer_buffer_m, global uchar* flags) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	flags[index_insert_p(a, direction)] = transfer_buffer_p[a];
-	flags[index_insert_m(a, direction)] = transfer_buffer_m[a];
-}
-
-)+"#ifdef SURFACE"+R(
-)+R(void extract_phi_massex_flags(const uint a, const uint A, const uxx n, global char* transfer_buffer, const global float* phi, const global float* massex, const global uchar* flags) {
-	((global float*)transfer_buffer)[     a] = phi   [n];
-	((global float*)transfer_buffer)[   A+a] = massex[n];
-	((global uchar*)transfer_buffer)[8u*A+a] = flags [n];
-}
-)+R(void insert_phi_massex_flags(const uint a, const uint A, const uxx n, const global char* transfer_buffer, global float* phi, global float* massex, global uchar* flags) {
-	phi   [n] = ((global float*)transfer_buffer)[     a];
-	massex[n] = ((global float*)transfer_buffer)[   A+a];
-	flags [n] = ((global uchar*)transfer_buffer)[8u*A+a];
-}
-)+R(kernel void transfer_extract_phi_massex_flags(const uint direction, const ulong t, global char* transfer_buffer_p, global char* transfer_buffer_m, const global float* phi, const global float* massex, const global uchar* flags) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	extract_phi_massex_flags(a, A, index_extract_p(a, direction), transfer_buffer_p, phi, massex, flags);
-	extract_phi_massex_flags(a, A, index_extract_m(a, direction), transfer_buffer_m, phi, massex, flags);
-}
-)+R(kernel void transfer__insert_phi_massex_flags(const uint direction, const ulong t, const global char* transfer_buffer_p, const global char* transfer_buffer_m, global float* phi, global float* massex, global uchar* flags) {
-	const uint a=get_global_id(0), A=get_area(direction); // a = domain area index for each side, A = area of the domain boundary
-	if(a>=A) return; // area might not be a multiple of cl_workgroup_size, so return here to avoid writing in unallocated memory space
-	insert_phi_massex_flags(a, A, index_insert_p(a, direction), transfer_buffer_p, phi, massex, flags);
-	insert_phi_massex_flags(a, A, index_insert_m(a, direction), transfer_buffer_m, phi, massex, flags);
-}
-)+"#endif"+R( // SURFACE
-
-
-
-
-
 )+R(kernel void voxelize_mesh)+"("+R(const uint direction, global fpxx* fi, global float* u, global uchar* flags, const ulong t, const uchar flag, const global float* p0, const global float* p1, const global float* p2, const global float* bbu // ) { // voxelize triangle mesh
 )+"#ifdef SURFACE"+R(
 	, global float* mass, global float* massex // argument order is important
@@ -2198,11 +1751,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	j[31] = x0+yp+zq; // 0+#
 } // calculate_j32()
 
-)+"#ifndef FORCE_FIELD"+R( // render flags as grid
-)+R(kernel void graphics_flags(const global float* camera, global int* bitmap, global int* zbuffer, const global uchar* flags) {
-)+"#else"+R( // FORCE_FIELD
-)+R(kernel void graphics_flags(const global float* camera, global int* bitmap, global int* zbuffer, const global uchar* flags, const global float* F) {
-)+"#endif"+R( // FORCE_FIELD
+)+R(kernel void graphics_flags(const global float* camera, global int* bitmap, global int* zbuffer, const global uchar* flags) { // render flags as grid
 	const uxx n = get_global_id(0);
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute graphics_flags() on halo
 	const uchar flagsn = flags[n]; // cache flags
@@ -2253,23 +1802,9 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	if(!(not_xp||not_zm)) draw_line(p3, p6, c, camera_cache, bitmap, zbuffer);
 	if(!(not_xm||not_yp)) draw_line(p4, p7, c, camera_cache, bitmap, zbuffer);
 	if(!(not_xp||not_ym)) draw_line(p5, p6, c, camera_cache, bitmap, zbuffer);
-)+"#ifdef FORCE_FIELD"+R(
-	if(flagsn_bo==TYPE_S) {
-		const float3 Fn = def_scale_F*(float3)(F[n], F[def_N+(ulong)n], F[2ul*def_N+(ulong)n]);
-		const float Fnl = length(Fn);
-		if(Fnl>0.0f) {
-			const int c = colorscale_iron(Fnl); // color boundaries depending on the force on them
-			draw_line(p, p+Fn, c, camera_cache, bitmap, zbuffer); // draw colored force vectors
-		}
-	}
-)+"#endif"+R( // FORCE_FIELD
 }
 
-)+"#ifndef FORCE_FIELD"+R( // render solid boundaries with marching-cubes
-)+R(kernel void graphics_flags_mc(const global float* camera, global int* bitmap, global int* zbuffer, const global uchar* flags) {
-)+"#else"+R( // FORCE_FIELD
-)+R(kernel void graphics_flags_mc(const global float* camera, global int* bitmap, global int* zbuffer, const global uchar* flags, const global float* F) {
-)+"#endif"+R( // FORCE_FIELD
+)+R(kernel void graphics_flags_mc(const global float* camera, global int* bitmap, global int* zbuffer, const global uchar* flags) { // render solid boundaries with marching-cubes
 	const uxx n = get_global_id(0);
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute graphics_flags() on halo
 	const uint3 xyz = coordinates(n);
@@ -2285,23 +1820,12 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	float3 triangles[15]; // maximum of 5 triangles with 3 vertices each
 	const uint tn = marching_cubes_halfway(v, triangles); // run marching cubes algorithm
 	if(tn==0u) return;
-)+"#ifdef FORCE_FIELD"+R(
-	float3 Fj[8];
-	for(uint i=0u; i<8u; i++) Fj[i] = v[i] ? load3(j[i], F) : (float3)(0.0f, 0.0f, 0.0f);
-)+"#endif"+R( // FORCE_FIELD
 	for(uint i=0u; i<tn; i++) {
 		const float3 p0 = triangles[3u*i   ];
 		const float3 p1 = triangles[3u*i+1u];
 		const float3 p2 = triangles[3u*i+2u];
 		int c0=0xDFDFDF, c1=0xDFDFDF, c2=0xDFDFDF;
-)+"#ifdef FORCE_FIELD"+R(
-		const float3 normal = normalize(cross(p1-p0, p2-p0));
-		c0 = colorscale_twocolor(0.5f+def_scale_F*dot(trilinear3(p0, Fj), normal));
-		c1 = colorscale_twocolor(0.5f+def_scale_F*dot(trilinear3(p1, Fj), normal));
-		c2 = colorscale_twocolor(0.5f+def_scale_F*dot(trilinear3(p2, Fj), normal));
-)+"#else"+R( // FORCE_FIELD
 		const float3 normal = cross(p1-p0, p2-p0); // no normalize needed for shading()
-)+"#endif"+R( // FORCE_FIELD
 		c0 = shading(c0, p+p0, normal, camera_cache);
 		c1 = shading(c1, p+p1, normal, camera_cache);
 		c2 = shading(c2, p+p2, normal, camera_cache);
@@ -2319,11 +1843,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	for(uint i=0u; i<15u; i++) camera_cache[i] = camera[i];
 	const float3 p = position(xyz);
 	if(!is_in_camera_frustrum(p, camera_cache)) return; // skip loading LBM data if grid cell is not visible
-)+"#ifndef MOVING_BOUNDARIES"+R(
 	if(flags[n]&(TYPE_S|TYPE_E|TYPE_I|TYPE_G)) return;
-)+"#else"+R( // MOVING_BOUNDARIES
-	if(flags[n]&(TYPE_I|TYPE_G)) return;
-)+"#endif"+R( // MOVING_BOUNDARIES
 	const float3 un = load3(n, u); // cache velocity
 	const float ul = length(un);
 	if(def_scale_u*ul<0.1f) return; // don't draw lattice points where the velocity is lower than this threshold
@@ -2686,18 +2206,6 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 }
 )+"#endif"+R( // SURFACE
 
-)+"#ifdef PARTICLES"+R(
-)+R(kernel void graphics_particles(const global float* camera, global int* bitmap, global int* zbuffer, const global float* particles) {
-	const uxx n = get_global_id(0);
-	if(n>=(uxx)def_particles_N) return;
-	float camera_cache[15]; // cache parameters in case the kernel draws more than one shape
-	for(uint i=0u; i<15u; i++) camera_cache[i] = camera[i];
-	const int c = COLOR_P; // coloring scheme
-	const float3 p = (float3)(particles[n], particles[def_particles_N+(ulong)n], particles[2ul*def_particles_N+(ulong)n]);
-	draw_point(p, c, camera_cache, bitmap, zbuffer);
-	//draw_circle(p, 0.5f, c, camera_cache, bitmap, zbuffer);
-}
-)+"#endif"+R( // PARTICLES
 )+"#endif"+R( // GRAPHICS
 
 

@@ -43,7 +43,6 @@
 #define GRAPHICS_U_MAX 0.18f
 #define GRAPHICS_RHO_DELTA 0.001f
 
-#define GRAPHICS_F_MAX 0.001f
 #define GRAPHICS_Q_CRITERION 0.0001f
 #define GRAPHICS_STREAMLINE_SPARSE 8
 #define GRAPHICS_STREAMLINE_LENGTH 128
@@ -72,7 +71,6 @@
 #define VIS_Q_CRITERION   0b00010000
 #define VIS_PHI_RASTERIZE 0b00100000
 #define VIS_PHI_RAYTRACE  0b01000000
-#define VIS_PARTICLES     0b10000000
 
 // ============================================================================
 // Internal Definitions (Do not modify)

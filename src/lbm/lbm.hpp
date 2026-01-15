@@ -16,8 +16,6 @@ string default_filename(const string& path, const string& name, const string& ex
 string default_filename(const string& name, const string& extension, const ulong t); // generate a default filename with timestamp at exe_path/export/
 
 #pragma warning(disable:26812)
-enum enum_transfer_field { fi, rho_u_flags, flags, phi_massex_flags, gi, T, enum_transfer_field_length };
-
 class LBM_Domain {
 private:
 	uint Nx=1u, Ny=1u, Nz=1u; // (local) lattice dimensions
@@ -29,8 +27,6 @@ private:
 	float fx=0.0f, fy=0.0f, fz=0.0f; // global force per volume
 	float sigma=0.0f; // surface tension coefficient
 	float alpha=1.0f, beta=1.0f, T_avg=1.0f; // alpha = thermal diffusion coefficient, beta = (volumetric) thermal expansion coefficient, T_avg = 1 = average temperature
-	uint particles_N = 0u;
-	float particles_rho = 1.0f;
 
 	Device device; // OpenCL device associated with this LBM domain
 	Kernel kernel_initialize; // initialization kernel
@@ -38,17 +34,6 @@ private:
 	Kernel kernel_update_fields; // reads DDFs and updates (rho, u, T) in device memory
 	Memory<fpxx> fi; // LBM density distribution functions (DDFs); only exist in device memory
 	ulong t_last_update_fields = max_ulong; // optimization to not call kernel_update_fields multiple times if (rho, u, T) are already up-to-date
-#ifdef FORCE_FIELD
-	Kernel kernel_update_force_field; // calculate forces from fluid on TYPE_S cells
-	Kernel kernel_reset_force_field; // reset force field (also on TYPE_S cells)
-	Kernel kernel_object_center_of_mass; // calculate center of mass of all cells flagged with flag_marker
-	Kernel kernel_object_force; // add up force for all cells flagged with flag_marker
-	Kernel kernel_object_torque; // add up torque around specified rotation_center for all cells flagged with flag_marker
-	ulong t_last_force_field = max_ulong; // optimization to not call kernel_update_force_field multiple times if F is already up-to-date
-#endif // FORCE_FIELD
-#ifdef MOVING_BOUNDARIES
-	Kernel kernel_update_moving_boundaries; // mark/unmark cells next to TYPE_S cells with velocity!=0 with TYPE_MS
-#endif // MOVING_BOUNDARIES
 #ifdef SURFACE
 	Kernel kernel_surface_0; // additional kernel for computing mass conservation and mass flux computation
 	Kernel kernel_surface_1; // additional kernel for flag handling
@@ -58,10 +43,6 @@ private:
 	Memory<float> massex; // excess mass; used for mass conservation
 #endif // SURFACE
 
-#ifdef PARTICLES
-	Kernel kernel_integrate_particles; // intgegrates particles forward in time and couples particles to fluid
-#endif // PARTICLES
-
 	void allocate(Device& device); // allocate all memory for data fields on host and device and set up kernels
 	string device_defines() const; // returns preprocessor constants for embedding in OpenCL C code
 
@@ -70,26 +51,11 @@ public:
 	Memory<float> rho; // density of every cell
 	Memory<float> u; // velocity of every cell
 	Memory<uchar> flags; // flags of every cell
-#ifdef FORCE_FIELD
-	Memory<float> F; // individual force for every cell
-	Memory<float> object_sum; // sum of individual cell data for an object
-#endif // FORCE_FIELD
 #ifdef SURFACE
 	Memory<float> phi; // fill level of every cell
 #endif // SURFACE
 
-#ifdef PARTICLES
-	Memory<float> particles; // particle positions
-#endif // PARTICLES
-
-	Memory<char> transfer_buffer_p, transfer_buffer_m; // transfer buffers for multi-device domain communication, only allocate one set of transfer buffers in plus/minus directions, for all x/y/z transfers
-	Kernel kernel_transfer[enum_transfer_field::enum_transfer_field_length][2]; // for each field one extract and one insert kernel
-	void allocate_transfer(Device& device); // allocate all memory for multi-device transfer
-	ulong get_area(const uint direction);
-	void enqueue_transfer_extract_field(Kernel& kernel_transfer_extract_field, const uint direction, const uint bytes_per_cell);
-	void enqueue_transfer_insert_field(Kernel& kernel_transfer_insert_field, const uint direction, const uint bytes_per_cell);
-
-	LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta, const uint particles_N, const float particles_rho); // compiles OpenCL C code and allocates memory
+	LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta); // compiles OpenCL C code and allocates memory
 
 	void enqueue_initialize(); // write all data fields to device and call kernel_initialize
 	void enqueue_stream_collide(); // call kernel_stream_collide to perform one LBM time step
@@ -118,19 +84,6 @@ public:
 	void enqueue_surface_2();
 	void enqueue_surface_3();
 #endif // SURFACE
-#ifdef FORCE_FIELD
-	void enqueue_update_force_field(); // calculate forces from fluid on TYPE_S cells
-	void enqueue_object_center_of_mass(const uchar flag_marker=TYPE_S); // calculate center of mass of all cells flagged with flag_marker
-	void enqueue_object_force(const uchar flag_marker=TYPE_S); // add up force for all cells flagged with flag_marker
-	void enqueue_object_torque(const float3& rotation_center, const uchar flag_marker=TYPE_S); // add up torque around specified rotation_center for all cells flagged with flag_marker
-#endif // FORCE_FIELD
-#ifdef MOVING_BOUNDARIES
-	void enqueue_update_moving_boundaries(); // mark/unmark cells next to TYPE_S cells with velocity!=0 with TYPE_MS
-#endif // MOVING_BOUNDARIES
-#ifdef PARTICLES
-	void enqueue_integrate_particles(const uint time_step_multiplicator=1u); // intgegrates particles forward in time and couples particles to fluid
-#endif // PARTICLES
-
 	void increment_time_step(const uint steps=1u); // increment time step
 	void reset_time_step(); // reset time step
 	void finish_queue();
@@ -140,6 +93,7 @@ public:
 	uint get_Ny() const { return Ny; } // get (local) lattice dimensions in y-direction
 	uint get_Nz() const { return Nz; } // get (local) lattice dimensions in z-direction
 	ulong get_N() const { return (ulong)Nx*(ulong)Ny*(ulong)Nz; } // get (local) number of lattice points
+	ulong get_area(const uint direction); // get area of sides of a subdomain
 	uint get_Dx() const { return Dx; } // get lattice domains in x-direction
 	uint get_Dy() const { return Dy; } // get lattice domains in y-direction
 	uint get_Dz() const { return Dz; } // get lattice domains in z-direction
@@ -187,10 +141,6 @@ public:
 		Image* get_skybox_image() const { return skybox_image; }
 #endif // SURFACE
 
-#ifdef PARTICLES
-		Kernel kernel_graphics_particles;
-#endif // PARTICLES
-
 		ulong t_last_rendered_frame = max_ulong; // optimization to not call draw_frame() multiple times if camera_parameters and LBM time step are unchanged
 		bool update_camera(); // update camera_parameters and return if they are changed from their previous state
 
@@ -227,7 +177,7 @@ private:
 	uint Dx=1u, Dy=1u, Dz=1u; // lattice domains
 	bool initialized = false; // becomes true after LBM::initialize() has been called
 
-	void sanity_checks_constructor(const vector<Device_Info>& device_infos, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta, const uint particles_N, const float particles_rho); // sanity checks on grid resolution and extension support
+	void sanity_checks_constructor(const vector<Device_Info>& device_infos, const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta); // sanity checks on grid resolution and extension support
 	void sanity_checks_initialization(); // sanity checks during initialization on used extensions based on used flags
 	void initialize(); // write all data fields to device and call kernel_initialize
 	void do_time_step(); // call kernel_stream_collide to perform one LBM time step
@@ -242,19 +192,7 @@ private:
 	void step_surface_excess_mass_distribute();
 #endif // SURFACE
 	void step_exchange_fi();
-#ifdef PARTICLES
-	void step_integrate_particles();
-#endif // PARTICLES
 	void step_finalize_time_step();
-
-	void communicate_field(const enum_transfer_field field, const uint bytes_per_cell);
-
-	void communicate_fi();
-	void communicate_rho_u_flags();
-	void communicate_flags();
-#ifdef SURFACE
-	void communicate_phi_massex_flags();
-#endif // SURFACE
 
 
 public:
@@ -348,8 +286,6 @@ public:
 				spacing = units.si_x(1.0f);
 				if(name=="rho") unit_conversion_factor = (T)units.si_rho(1.0f);
 				if(name=="u"  ) unit_conversion_factor = (T)units.si_u  (1.0f);
-				if(name=="F"  ) unit_conversion_factor = (T)units.si_F  (1.0f);
-				if(name=="T"  ) unit_conversion_factor = (T)units.si_T  (1.0f);
 			}
 			const float3 origin = spacing*float3(0.5f-0.5f*(float)Nx, 0.5f-0.5f*(float)Ny, 0.5f-0.5f*(float)Nz);
 			const string header =
@@ -450,42 +386,16 @@ public:
 	Memory_Container<float> rho; // density of every cell
 	Memory_Container<float> u; // velocity of every cell
 	Memory_Container<uchar> flags; // flags of every cell
-#ifdef FORCE_FIELD
-	Memory_Container<float> F; // individual force for every cell
-#endif // FORCE_FIELD
 #ifdef SURFACE
 	Memory_Container<float> phi; // fill level of every cell
 #endif // SURFACE
-
-#ifdef PARTICLES
-	Memory<float>* particles; // particle positions
-#endif // PARTICLES
-
-	LBM(const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f, const uint particles_N=0u, const float particles_rho=0.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f, const uint particles_N=0u, const float particles_rho=1.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const uint particles_N, const float particles_rho=1.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const uint particles_N, const float particles_rho=1.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint3 N, const uint Dx, const uint Dy, const uint Dz, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f, const uint particles_N=0u, const float particles_rho=0.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint3 N, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f, const uint particles_N=0u, const float particles_rho=1.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint3 N, const float nu, const uint particles_N, const float particles_rho=1.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint3 N, const float nu, const float fx, const float fy, const float fz, const uint particles_N, const float particles_rho=1.0f); // compiles OpenCL C code and allocates memory
+	LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f); // compiles OpenCL C code and allocates memory
+	LBM(const uint3 N, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f); // compiles OpenCL C code and allocates memory
 	~LBM();
 
 	void run(const ulong steps=max_ulong, const ulong total_steps=max_ulong); // initializes the LBM simulation (copies data to device and runs initialize kernel), then runs LBM
 	void update_fields(); // update fields (rho, u, T) manually
 	void reset(); // reset simulation (takes effect in following run() call)
-#ifdef FORCE_FIELD
-	void update_force_field(); // calculate forces from fluid on TYPE_S cells
-	float3 object_center_of_mass(const uchar flag_marker=TYPE_S); // calculate center of mass of all cells flagged with flag_marker
-	float3 object_force(const uchar flag_marker=TYPE_S); // add up force for all cells flagged with flag_marker
-	float3 object_torque(const float3& rotation_center, const uchar flag_marker=TYPE_S); // add up torque around specified rotation_center for all cells flagged with flag_marker
-#endif // FORCE_FIELD
-#ifdef MOVING_BOUNDARIES
-	void update_moving_boundaries(); // mark/unmark cells next to TYPE_S cells with velocity!=0 with TYPE_MS
-#endif // MOVING_BOUNDARIES
-#if defined(PARTICLES)&&!defined(FORCE_FIELD)
-	void integrate_particles(const ulong steps=max_ulong, const ulong total_steps=max_ulong, const uint time_step_multiplicator=1u); // intgegrate passive tracer particles forward in time in stationary flow field
-#endif // PARTICLES&&!FORCE_FIELD
 
 	uint get_Nx() const { return Nx; } // get (global) lattice dimensions in x-direction
 	uint get_Ny() const { return Ny; } // get (global) lattice dimensions in y-direction
@@ -589,9 +499,6 @@ public:
 		int last_visualization_modes=0, last_field_mode=0, last_slice_mode=0, last_slice_x=0, last_slice_y=0, last_slice_z=0; // don't render a new frame if the scene hasn't changed since last frame
 		void default_settings() {
 			visualization_modes |= VIS_FLAG_LATTICE;
-#ifdef PARTICLES
-			visualization_modes |= VIS_PARTICLES;
-#endif // PARTICLES
 		}
 
 	public:
