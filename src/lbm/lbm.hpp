@@ -293,6 +293,30 @@ public:
 				return buffers[domain]->data()[local_i+local_dimension*local_N]; // array of structures
 			}
 		}
+		inline const T& reference(const ulong i) const { // stitch together domain buffers and make them appear as one single large buffer
+			if(D==1u) { // take shortcut for single domain
+				return buffers[0]->data()[i]; // array of structures
+			} else { // decompose index for multiple domains
+				const ulong global_i=i%N, t=global_i%NxNy;
+				const uint x=(uint)(t%(ulong)Nx), y=(uint)(t/(ulong)Nx), z=(uint)(global_i/NxNy); // n = x+(y+z*Ny)*Nx
+				const uint px=x%NxDx, py=y%NyDy, pz=z%NzDz, dx=x/NxDx, dy=y/NyDy, dz=z/NzDz, domain=dx+(dy+dz*Dy)*Dx; // 3D position within domain and which domain
+				const ulong local_i = (ulong)(px+Hx)+((ulong)(py+Hy)+(ulong)(pz+Hz)*local_Ny)*local_Nx; // add halo offsets
+				const ulong local_dimension = i/N;
+				return buffers[domain]->data()[local_i+local_dimension*local_N]; // array of structures
+			}
+		}
+		inline const T& reference(const ulong i, const uint dimension) const { // stitch together domain buffers and make them appear as one single large buffer
+			if(D==1u) { // take shortcut for single domain
+				return buffers[0]->data()[i+(ulong)dimension*N]; // array of structures
+			} else { // decompose index for multiple domains
+				const ulong global_i=i%N, t=global_i%NxNy;
+				const uint x=(uint)(t%(ulong)Nx), y=(uint)(t/(ulong)Nx), z=(uint)(global_i/NxNy); // n = x+(y+z*Ny)*Nx
+				const uint px=x%NxDx, py=y%NyDy, pz=z%NzDz, dx=x/NxDx, dy=y/NyDy, dz=z/NzDz, domain=dx+(dy+dz*Dy)*Dx; // 3D position within domain and which domain
+				const ulong local_i = (ulong)(px+Hx)+((ulong)(py+Hy)+(ulong)(pz+Hz)*local_Ny)*local_Nx; // add halo offsets
+				const ulong local_dimension = max(i/N, (ulong)dimension);
+				return buffers[domain]->data()[local_i+local_dimension*local_N]; // array of structures
+			}
+		}
 		inline string vtk_type() const {
 			/**/ if constexpr(std::is_same<T, char >::value) return "char" ; else if constexpr(std::is_same<T, uchar >::value) return "unsigned_char" ;
 			else if constexpr(std::is_same<T, short>::value) return "short"; else if constexpr(std::is_same<T, ushort>::value) return "unsigned_short";
@@ -387,9 +411,9 @@ public:
 		inline const T operator()(const ulong i) const { return reference(i); }
 		inline const T operator()(const ulong i, const uint dimension) const { return reference(i, dimension); } // array of structures
 		inline void read_from_device() {
-#ifndef UPDATE_FIELDS
+// #ifndef UPDATE_FIELDS
 			for(uint domain=0u; domain<D; domain++) lbm->lbm_domain[domain]->enqueue_update_fields(); // make sure data in device memory is up-to-date
-#endif // UPDATE_FIELDS
+// #endif // UPDATE_FIELDS
 			for(uint domain=0u; domain<D; domain++) buffers[domain]->enqueue_read_from_device();
 			for(uint domain=0u; domain<D; domain++) buffers[domain]->finish_queue();
 		}
@@ -531,6 +555,7 @@ public:
 		return relative_position(x, y, z);
 	}
 	void write_status(const string& path=""); // write LBM status report to a .txt file
+	void write_vtk(const string& filename); // write simulation data to VTK file
 
 	void voxelize_mesh_on_device(const Mesh* mesh, const uchar flag=TYPE_S, const float3& rotation_center=float3(0.0f), const float3& linear_velocity=float3(0.0f), const float3& rotational_velocity=float3(0.0f)); // voxelize mesh
 	void unvoxelize_mesh_on_device(const Mesh* mesh, const uchar flag=TYPE_S); // remove voxelized triangle mesh from LBM grid

@@ -55,9 +55,16 @@ void main_setup() {
 	// Set visualization mode: raytracing for single GPU, rasterizing for multi-GPU
 	lbm.graphics.visualization_modes = lbm.get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
 
+	// VTK export interval
+	const uint vtk_interval = 100u; // Export every 1000 steps
+
 	// Main simulation loop - run indefinitely
 	while(true) {
 		lbm.run(log_interval);
+
+		if (lbm.get_t() % vtk_interval == 0) {
+			lbm.write_vtk("output/dam_break_" + to_string(lbm.get_t()) + ".vtk");
+		}
 
 		// Calculate current total mass
 		double current_mass = (double)lbm.lbm_domain[0]->compute_total_mass();

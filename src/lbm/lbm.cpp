@@ -1,4 +1,7 @@
 #include "lbm.hpp"
+#include <iostream>
+#include <fstream>
+#include <algorithm>
 
 
 
@@ -1263,3 +1266,103 @@ void LBM::communicate_phi_massex_flags() {
 	communicate_field(enum_transfer_field::phi_massex_flags, 9u);
 }
 #endif // SURFACE
+
+void LBM::write_vtk(const string& filename) { // write simulation data to VTK file
+	update_fields(); // Ensure macroscopic fields are up-to-date on device
+	rho.read_from_device();
+	u.read_from_device();
+	flags.read_from_device();
+#ifdef SURFACE
+	phi.read_from_device();
+#endif // SURFACE
+
+	const float spacing = units.si_x(1.0f);
+	const float3 origin = spacing*float3(0.5f-0.5f*(float)Nx, 0.5f-0.5f*(float)Ny, 0.5f-0.5f*(float)Nz);
+	const string header =
+		"# vtk DataFile Version 3.0\nFluidX3D Output\nBINARY\nDATASET STRUCTURED_POINTS\n"
+		"DIMENSIONS "+to_string(Nx)+" "+to_string(Ny)+" "+to_string(Nz)+"\n"
+		"ORIGIN "+to_string(origin.x)+" "+to_string(origin.y)+" "+to_string(origin.z)+"\n"
+		"SPACING "+to_string(spacing)+" "+to_string(spacing)+" "+to_string(spacing)+"\n"
+		"POINT_DATA "+to_string((ulong)Nx*(ulong)Ny*(ulong)Nz)+"\n";
+	
+	create_folder(filename);
+	std::ofstream file(filename, std::ios::out|std::ios::binary);
+	if(!file.is_open()) {
+		print_error("Could not open file "+filename+" for writing.");
+		return;
+	}
+	file.write(header.c_str(), header.length());
+
+	const ulong N = (ulong)Nx*(ulong)Ny*(ulong)Nz;
+	
+	{ // write density
+		const string section_header = "SCALARS density float 1\nLOOKUP_TABLE default\n";
+		file.write(section_header.c_str(), section_header.length());
+		const float conversion = (float)units.si_rho(1.0f);
+		float* buffer = new float[N];
+		parallel_for(N, [&](ulong n) {
+			buffer[n] = reverse_bytes((float)(rho[n]*conversion));
+		});
+		file.write((char*)buffer, N*sizeof(float));
+		delete[] buffer;
+	}
+
+	{ // write velocity
+		const string section_header = "VECTORS velocity float\n";
+		file.write(section_header.c_str(), section_header.length());
+		const float conversion = (float)units.si_u(1.0f);
+		float* buffer = new float[3*N];
+		parallel_for(N, [&](ulong n) {
+			buffer[3*n+0] = reverse_bytes((float)(u(n, 0)*conversion));
+			buffer[3*n+1] = reverse_bytes((float)(u(n, 1)*conversion));
+			buffer[3*n+2] = reverse_bytes((float)(u(n, 2)*conversion));
+		});
+		file.write((char*)buffer, 3*N*sizeof(float));
+		delete[] buffer;
+	}
+	
+	{ // write mass
+		const string section_header = "SCALARS mass float 1\nLOOKUP_TABLE default\n";
+		file.write(section_header.c_str(), section_header.length());
+		const float conversion = (float)units.si_rho(1.0f); // approx conversion using density scaling
+		float* buffer = new float[N];
+		parallel_for(N, [&](ulong n) {
+			float m = rho[n];
+#ifdef SURFACE
+			m *= phi[n];
+#endif // SURFACE
+			buffer[n] = reverse_bytes((float)(m*conversion));
+		});
+		file.write((char*)buffer, N*sizeof(float));
+		delete[] buffer;
+	}
+
+#ifdef SURFACE
+	{ // write fill level
+		const string section_header = "SCALARS fill float 1\nLOOKUP_TABLE default\n";
+		file.write(section_header.c_str(), section_header.length());
+		float* buffer = new float[N];
+		parallel_for(N, [&](ulong n) {
+			buffer[n] = reverse_bytes((float)phi[n]);
+		});
+		file.write((char*)buffer, N*sizeof(float));
+		delete[] buffer;		
+	}
+#endif // SURFACE
+	
+	{ // write cell type
+		const string section_header = "SCALARS cell_type unsigned_char 1\nLOOKUP_TABLE default\n";
+		file.write(section_header.c_str(), section_header.length());
+		uchar* buffer = new uchar[N];
+		parallel_for(N, [&](ulong n) {
+			buffer[n] = flags[n];
+		});
+		file.write((char*)buffer, N*sizeof(uchar));
+		delete[] buffer;
+	}
+
+	file.close();
+	info.allow_printing.lock();
+	print_info("File \""+filename+"\" saved.");
+	info.allow_printing.unlock();
+}
