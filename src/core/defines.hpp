@@ -73,11 +73,7 @@
 // ============================================================================
 // Internal Definitions (Do not modify)
 // ============================================================================
-#if defined(FP16S) || defined(FP16C)
 #define fpxx ushort
-#else
-#define fpxx float
-#endif
 
 #ifdef SURFACE
 #define UPDATE_FIELDS

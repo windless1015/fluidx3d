@@ -1070,22 +1070,8 @@ string opencl_c_container() { return R( // ########################## begin of O
 	return l*copysign(0.5f-d, V0-0.5f); // rescale result and apply symmetry for V0>0.5
 }
 )+R(void get_remaining_neighbor_phij(const uxx n, const float* phit, const global float* phi, float* phij) { // get remaining phij for D3Q27 neighborhood
-)+"#ifndef D3Q27"+R(
 	uxx x0, xp, xm, y0, yp, ym, z0, zp, zm;
 	calculate_indices(n, &x0, &xp, &xm, &y0, &yp, &ym, &z0, &zp, &zm);
-)+"#endif"+R( // D3Q27
-)+"#if defined(D3Q15)"+R(
-	uxx j[12]; // calculate neighbor indices
-	j[ 0] = xp+yp+z0; j[ 1] = xm+ym+z0; // ++0 --0
-	j[ 2] = xp+y0+zp; j[ 3] = xm+y0+zm; // +0+ -0-
-	j[ 4] = x0+yp+zp; j[ 5] = x0+ym+zm; // 0++ 0--
-	j[ 6] = xp+ym+z0; j[ 7] = xm+yp+z0; // +-0 -+0
-	j[ 8] = xp+y0+zm; j[ 9] = xm+y0+zp; // +0- -0+
-	j[10] = x0+yp+zm; j[11] = x0+ym+zp; // 0+- 0-+
-	for(uint i= 0u; i< 7u; i++) phij[i] = phit[i];
-	for(uint i= 7u; i<19u; i++) phij[i] = phi[j[i-7u]];
-	for(uint i=19u; i<27u; i++) phij[i] = phit[i-12u];
-)+"#elif defined(D3Q19)"+R(
 	uxx j[8]; // calculate remaining neighbor indices
 	j[0] = xp+yp+zp; j[1] = xm+ym+zm; // +++ ---
 	j[2] = xp+yp+zm; j[3] = xm+ym+zp; // ++- --+
@@ -1093,9 +1079,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 	j[6] = xm+yp+zp; j[7] = xp+ym+zm; // -++ +--
 	for(uint i= 0u; i<19u; i++) phij[i] = phit[i];
 	for(uint i=19u; i<27u; i++) phij[i] = phi[j[i-19u]];
-)+"#elif defined(D3Q27)"+R(
-	for(uint i=0u; i<def_velocity_set; i++) phij[i] = phit[i];
-)+"#endif"+R( // D3Q27
 }
 )+R(float c_D3Q27(const uint i) { // avoid constant keyword by encapsulating data in function which gets inlined by compiler
 	const float c[3*27] = {
@@ -1106,7 +1089,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 	return c[i];
 }
 )+R(float calculate_curvature(const uxx n, const float* phit, const global float* phi) { // calculate surface curvature, always use D3Q27 stencil here, source: https://doi.org/10.3390/computation10020021
-)+"#ifndef D2Q9"+R(
 	float phij[27];
 	get_remaining_neighbor_phij(n, phit, phi, phij); // complete neighborhood from whatever velocity set is selected to D3Q27
 	const float3 bz = calculate_normal_py(phij); // new coordinate system: bz is normal to surface, bx and by are tangent to surface
@@ -1140,31 +1122,6 @@ string opencl_c_container() { return R( // ########################## begin of O
 	else lu_solve(M, x, b, 5, min(5u, number)); // cannot do loop unrolling here -> slower -> extra if-else to avoid slowdown
 	const float A=x[0], B=x[1], C=x[2], H=x[3], I=x[4];
 	const float K = (A*(I*I+1.0f)+B*(H*H+1.0f)-C*H*I)*cb(rsqrt(H*H+I*I+1.0f)); // mean curvature of Monge patch (x, y, f(x, y))
-)+"#else"+R( // D2Q9
-	const float3 by = calculate_normal_py(phit); // new coordinate system: bz is normal to surface, bx and by are tangent to surface
-	const float3 bx = cross(by, (float3)(0.0f, 0.0f, 1.0f)); // normalize() is necessary here because bz and rn are not perpendicular
-	uint number = 0u; // number of neighboring interface points
-	float2 p[6]; // number of neighboring interface points is less or equal than than 8 minus 1 gas and minus 1 fluid point = 6
-	const float center_offset = plic_cube(phit[0], by); // calculate z-offset PLIC of center point only once
-	for(uint i=1u; i<9u; i++) { // iterate over neighbors, no loop unrolling here (50% better perfoemance without loop unrolling)
-		if(phit[i]>0.0f&&phit[i]<1.0f) { // limit neighbors to interface cells
-			const float3 ei = (float3)(c(i), c(9u+i), 0.0f); // assume neighbor normal vector is the same as center normal vector
-			const float offset = plic_cube(phit[i], by)-center_offset;
-			p[number++] = (float2)(dot(ei, bx), dot(ei, by)+offset); // do coordinate system transformation into (x, f(x)) and apply PLIC pffsets
-		}
-	}
-	float M[4]={0.0f,0.0f,0.0f,0.0f}, x[2]={0.0f,0.0f}, b[2]={0.0f,0.0f};
-	for(uint i=0u; i<number; i++) { // f(x,y)=A*x2+H*x, x=(A,H), Q=(x2,x), M*x=b, M=Q*Q^T, b=Q*z
-		const float x=p[i].x, y=p[i].y, x2=x*x, x3=x2*x;
-		/**/M[0]+=x2*x2; M[1]+=x3; b[0]+=x2*y;
-		/*M[2]+=x3   ;*/ M[3]+=x2; b[1]+=x *y;
-	}
-	M[2] = M[1]; // use symmetry of matrix to save arithmetic operations
-	if(number>=2u) lu_solve(M, x, b, 2, 2);
-	else lu_solve(M, x, b, 2, min(2u, number)); // cannot do loop unrolling here -> slower -> extra if-else to avoid slowdown
-	const float A=x[0], H=x[1];
-	const float K = 2.0f*A*cb(rsqrt(H*H+1.0f)); // mean curvature of Monge patch (x, f(x)), note that curvature definition in 2D is different than 3D (additional factor 2)
-)+"#endif"+R( // D2Q9
 	return clamp(K, -1.0f, 1.0f); // prevent extreme pressures in the case of almost degenerate matrices
 }
 )+"#endif"+R( // SURFACE
@@ -1333,37 +1290,11 @@ string opencl_c_container() { return R( // ########################## begin of O
 	calculate_f_eq(rhon, uxn, uyn, uzn, feq); // calculate equilibrium DDFs
 	float w = def_w; // LBM relaxation rate w = dt/tau = dt/(nu/c^2+dt/2) = 1/(3*nu+1/2)
 
-)+"#if defined(SRT)"+R(
 )+"#ifdef VOLUME_FORCE"+R(
 	const float c_tau = fma(w, -0.5f, 1.0f);
 	for(uint i=0u; i<def_velocity_set; i++) Fin[i] *= c_tau;
 )+"#endif"+R( // VOLUME_FORCE
 	for(uint i=0u; i<def_velocity_set; i++) fhn[i] = fma(1.0f-w, fhn[i], fma(w, feq[i], Fin[i])); // perform collision (SRT)
-)+"#elif defined(TRT)"+R(
-	const float wp = w; // TRT: inverse of "+" relaxation time
-	const float wm = 1.0f/(0.1875f/(1.0f/w-0.5f)+0.5f); // TRT: inverse of "-" relaxation time wm = 1.0f/(0.1875f/(3.0f*nu)+0.5f), nu = (1.0f/w-0.5f)/3.0f;
-)+"#ifdef VOLUME_FORCE"+R(
-	const float c_taup=fma(wp, -0.25f, 0.5f), c_taum=fma(wm, -0.25f, 0.5f); // source: https://arxiv.org/pdf/1901.08766.pdf
-	float Fib[def_velocity_set]; // F_bar
-	Fib[0] = Fin[0];
-	for(uint i=1u; i<def_velocity_set; i+=2u) {
-		Fib[i   ] = Fin[i+1u];
-		Fib[i+1u] = Fin[i   ];
-	}
-	for(uint i=0u; i<def_velocity_set; i++) Fin[i] = fma(c_taup, Fin[i]+Fib[i], c_taum*(Fin[i]-Fib[i]));
-)+"#endif"+R( // VOLUME_FORCE
-	float fhb[def_velocity_set]; // fhn in inverse directions
-	float feb[def_velocity_set]; // feq in inverse directions
-	fhb[0] = fhn[0];
-	feb[0] = feq[0];
-	for(uint i=1u; i<def_velocity_set; i+=2u) {
-		fhb[i   ] = fhn[i+1u];
-		fhb[i+1u] = fhn[i   ];
-		feb[i   ] = feq[i+1u];
-		feb[i+1u] = feq[i   ];
-	}
-	for(uint i=0u; i<def_velocity_set; i++) fhn[i] = fma(0.5f*wp, feq[i]-fhn[i]+feb[i]-fhb[i], fma(0.5f*wm, feq[i]-feb[i]-fhn[i]+fhb[i], fhn[i]+Fin[i])); // perform collision (TRT)
-)+"#endif"+R( // TRT
 
 	store_f(n, fhn, fi, j, t); // perform streaming (part 1)
 } // stream_collide()

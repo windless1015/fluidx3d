@@ -236,8 +236,8 @@ string LBM_Domain::device_defines() const { return
 	"\n	#define def_domain_offset_y "+to_string(0.5f*(float)((int)Ny+2*Oy+(int)Dy*(2*(int)(Dy>1u)-(int)Ny)))+"f"
 	"\n	#define def_domain_offset_z "+to_string(0.5f*(float)((int)Nz+2*Oz+(int)Dz*(2*(int)(Dz>1u)-(int)Nz)))+"f"
 
-	"\n	#define D"+to_string(dimensions)+"Q"+to_string(velocity_set)+"" // D2Q9/D3Q15/D3Q19
-	"\n	#define def_velocity_set "+to_string(velocity_set)+"u" // LBM velocity set (D2Q9/D3Q15/D3Q19)
+	"\n	#define D"+to_string(dimensions)+"Q"+to_string(velocity_set)+"" // D3Q19
+	"\n	#define def_velocity_set "+to_string(velocity_set)+"u" // LBM velocity set (D3Q19)
 	"\n	#define def_dimensions "+to_string(dimensions)+"u" // number spatial dimensions (2D or 3D)
 	"\n	#define def_c 0.57735027f" // lattice speed of sound c = 1/sqrt(3)*dt
 	"\n	#define def_w " +to_string(1.0f/get_tau())+"f" // relaxation rate w = dt/tau = dt/(nu/c^2+dt/2) = 1/(3*nu+1/2)
@@ -247,9 +247,7 @@ string LBM_Domain::device_defines() const { return
 
 #if defined(SRT)
 	"\n	#define SRT"
-#elif defined(TRT)
-	"\n	#define TRT"
-#endif // TRT
+#endif // SRT
 
 	"\n	#define TYPE_S 0x01" // 0b00000001 // (stationary or moving) solid boundary
 	"\n	#define TYPE_F 0x08" // 0b00001000 // fluid
@@ -264,22 +262,10 @@ string LBM_Domain::device_defines() const { return
 	"\n	#define TYPE_GI 0x38" // 0b00111000 // change from gas to interface
 	"\n	#define TYPE_SU 0x38" // 0b00111000 // any flag bit used for SURFACE
 
-#if defined(FP16S)
 	"\n	#define fpxx half" // switchable data type (scaled IEEE-754 16-bit floating-point format: 1-5-10, exp-30, +-1.99902344, +-1.86446416E-9, +-1.81898936E-12, 3.311 digits)
 	"\n	#define fpxx_copy ushort" // switchable data type for direct copying (scaled IEEE-754 16-bit floating-point format: 1-5-10, exp-30, +-1.99902344, +-1.86446416E-9, +-1.81898936E-12, 3.311 digits)
 	"\n	#define load(p,o) vload_half(o,p)*3.0517578E-5f" // special function for loading half
 	"\n	#define store(p,o,x) vstore_half_rte((x)*32768.0f,o,p)" // special function for storing half
-#elif defined(FP16C)
-	"\n	#define fpxx ushort" // switchable data type (custom 16-bit floating-point format: 1-4-11, exp-15, +-1.99951168, +-6.10351562E-5, +-2.98023224E-8, 3.612 digits), 12.5% slower than IEEE-754 16-bit
-	"\n	#define fpxx_copy ushort" // switchable data type for direct copying (custom 16-bit floating-point format: 1-4-11, exp-15, +-1.99951168, +-6.10351562E-5, +-2.98023224E-8, 3.612 digits), 12.5% slower than IEEE-754 16-bit
-	"\n	#define load(p,o) half_to_float_custom(p[o])" // special function for loading half
-	"\n	#define store(p,o,x) p[o]=float_to_half_custom(x)" // special function for storing half
-#else // FP32
-	"\n	#define fpxx float" // switchable data type (regular 32-bit float)
-	"\n	#define fpxx_copy float" // switchable data type for direct copying (regular 32-bit float)
-	"\n	#define load(p,o) p[o]" // regular float read
-	"\n	#define store(p,o,x) p[o]=x" // regular float write
-#endif // FP32
 
 #ifdef UPDATE_FIELDS
 	"\n	#define UPDATE_FIELDS"
@@ -309,11 +295,7 @@ void LBM_Domain::Graphics::allocate(Device& device) {
 	kernel_graphics_flags_mc = Kernel(device, lbm->get_N(), "graphics_flags_mc", camera_parameters, bitmap, zbuffer, lbm->flags);
 	kernel_graphics_field = Kernel(device, lbm->get_D()==1u ? camera.width*camera.height : lbm->get_N(), lbm->get_D()==1u ? "graphics_field_rt" : "graphics_field", camera_parameters, bitmap, zbuffer, 0, lbm->rho, lbm->u, lbm->flags); // raytraced field visualization only works for single-GPU
 	kernel_graphics_field_slice = Kernel(device, lbm->get_N(), "graphics_field_slice", camera_parameters, bitmap, zbuffer, 0, 0, 0, 0, 0, lbm->rho, lbm->u, lbm->flags);
-#ifndef D2Q9
 	kernel_graphics_streamline = Kernel(device, (lbm->get_Nx()/GRAPHICS_STREAMLINE_SPARSE)*(lbm->get_Ny()/GRAPHICS_STREAMLINE_SPARSE)*(lbm->get_Nz()/GRAPHICS_STREAMLINE_SPARSE), "graphics_streamline", camera_parameters, bitmap, zbuffer, 0, 0, 0, 0, 0, lbm->rho, lbm->u, lbm->flags); // 3D
-#else // D2Q9
-	kernel_graphics_streamline = Kernel(device, (lbm->get_Nx()/GRAPHICS_STREAMLINE_SPARSE)*(lbm->get_Ny()/GRAPHICS_STREAMLINE_SPARSE), "graphics_streamline", camera_parameters, bitmap, zbuffer, 0, 0, 0, 0, 0, lbm->rho, lbm->u, lbm->flags); // 2D
-#endif // D2Q9
 	kernel_graphics_q = Kernel(device, lbm->get_N(), "graphics_q", camera_parameters, bitmap, zbuffer, 0, lbm->rho, lbm->u);
 
 #ifdef SURFACE
@@ -480,24 +462,13 @@ void LBM::sanity_checks_constructor(const vector<Device_Info>& device_infos, con
 		float factor = cbrt((float)memory_available/(float)memory_required);
 		const uint maxNx=(uint)(factor*(float)Nx), maxNy=(uint)(factor*(float)Ny), maxNz=(uint)(factor*(float)Nz);
 		string message = "Grid resolution ("+to_string(Nx)+", "+to_string(Ny)+", "+to_string(Nz)+") is too large: "+to_string(memory_required)+" MB required, "+to_string(memory_available)+" MB available. Largest possible resolution is ("+to_string(maxNx)+", "+to_string(maxNy)+", "+to_string(maxNz)+"). Restart the simulation with lower resolution or on different device(s) with more memory.";
-#if !defined(FP16S)&&!defined(FP16C)
-		uint memory_required_fp16 = (uint)((ulong)Nx*(ulong)Ny*(ulong)Nz*(ulong)(bytes_per_cell_device()-velocity_set*2u)/1048576ull); // in MB
-		float factor_fp16 = cbrt((float)memory_available/(float)memory_required_fp16);
-		const uint maxNx_fp16=(uint)(factor_fp16*(float)Nx), maxNy_fp16=(uint)(factor_fp16*(float)Ny), maxNz_fp16=(uint)(factor_fp16*(float)Nz);
-		message += " Consider using FP16S/FP16C memory compression to double maximum grid resolution to a maximum of ("+to_string(maxNx_fp16)+", "+to_string(maxNy_fp16)+", "+to_string(maxNz_fp16)+"); for this, uncomment \"#define FP16S\" or \"#define FP16C\" in defines.hpp.";
-#endif // !FP16S&&!FP16C
 		print_error(message);
 	}
 	if(nu==0.0f) print_error("Viscosity cannot be 0. Change it in setup.cpp."); // sanity checks for viscosity
 	else if(nu<0.0f) print_error("Viscosity cannot be negative. Remove the \"-\" in setup.cpp.");
-#ifdef D2Q9
-	if(Nz!=1u) print_error("D2Q9 is the 2D velocity set. You have to set Nz=1u in the LBM constructor! Currently you have set Nz="+to_string(Nz)+"u.");
-#endif // D2Q9
-#if !defined(SRT)&&!defined(TRT)
-	print_error("No LBM collision operator selected. Uncomment either \"#define SRT\" or \"#define TRT\" in defines.hpp");
-#elif defined(SRT)&&defined(TRT)
-	print_error("Too many LBM collision operators selected. Comment out either \"#define SRT\" or \"#define TRT\" in defines.hpp");
-#endif // SRT && TRT
+#if !defined(SRT)
+	print_error("No LBM collision operator selected. Uncomment \"#define SRT\" in defines.hpp");
+#endif // SRT
 #ifndef VOLUME_FORCE
 	if(fx!=0.0f||fy!=0.0f||fz!=0.0f) print_error("Volume force is set in LBM constructor in main_setup(), but VOLUME_FORCE is not enabled. Uncomment \"#define VOLUME_FORCE\" in defines.hpp.");
 #endif // VOLUME_FORCE

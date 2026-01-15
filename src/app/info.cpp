@@ -51,16 +51,10 @@ void Info::print_initialize(LBM* lbm) {
 	this->lbm = lbm;
 #if defined(SRT)
 	collision = "SRT";
-#elif defined(TRT)
-	collision = "TRT";
-#endif // TRT
+#endif // SRT
 #if defined(FP16S)
 	collision += " (FP32/FP16S)";
-#elif defined(FP16C)
-	collision += " (FP32/FP16C)";
-#else // FP32
-	collision += " (FP32/FP32)";
-#endif // FP32
+#endif // FP16S
 	bool all_domains_use_ram = true; // reset cpu/gpu_mem_required to get valid values for consecutive simulations
 	for(uint d=0u; d<lbm->get_D(); d++) {
 		all_domains_use_ram = all_domains_use_ram&&lbm->lbm_domain[d]->get_device().info.uses_ram;
