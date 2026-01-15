@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
-project(FluidX3D LANGUAGES CXX)
+project(FluidX3D LANGUAGES CXX CUDA)
 
 # ============================================================================
 # 项目配置
 # ============================================================================
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # 设置输出目录
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
@@ -33,6 +35,7 @@ set(LBM_SOURCES
     src/lbm/lbm_graphics.cpp
     src/lbm/kernel.cpp
     src/lbm/shapes.cpp
+    src/cuda/lbm_cuda.cu
 )
 set(LBM_HEADERS
     src/lbm/lbm.hpp
@@ -40,6 +43,8 @@ set(LBM_HEADERS
     src/lbm/lbm_interface.hpp
     src/lbm/kernel.hpp
     src/lbm/shapes.hpp
+    src/cuda/lbm_cuda.hpp
+    src/cuda/cuda_utils.hpp
 )
 
 # Render 模块
@@ -131,6 +136,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/src/render
     ${CMAKE_SOURCE_DIR}/src/render_gl
     ${CMAKE_SOURCE_DIR}/src/app
+    ${CMAKE_SOURCE_DIR}/src/cuda
     ${CMAKE_SOURCE_DIR}/src/OpenCL/include
 )
 
@@ -156,20 +162,20 @@ endif()
 # ============================================================================
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Release>:/O2>
-        $<$<CONFIG:Release>:/Oi>
-        $<$<CONFIG:Release>:/Gy>
-        $<$<CONFIG:Release>:/GL>
-        $<$<CONFIG:Release>:/fp:fast>
-        /MP
-        /W3
-        /sdl
-        /permissive-
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CXX>>:/O2>
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CXX>>:/Oi>
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CXX>>:/Gy>
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CXX>>:/GL>
+        $<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:CXX>>:/fp:fast>
+        $<$<COMPILE_LANGUAGE:CXX>:/MP>
+        $<$<COMPILE_LANGUAGE:CXX>:/W3>
+        $<$<COMPILE_LANGUAGE:CXX>:/sdl>
+        $<$<COMPILE_LANGUAGE:CXX>:/permissive->
     )
     
     target_compile_options(${PROJECT_NAME} PRIVATE
-        /wd26451
-        /wd6386
+        $<$<COMPILE_LANGUAGE:CXX>:/wd26451>
+        $<$<COMPILE_LANGUAGE:CXX>:/wd6386>
     )
     
     target_link_options(${PROJECT_NAME} PRIVATE
@@ -201,9 +207,9 @@ endif()
 # ============================================================================
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
-        $<$<CONFIG:Debug>:/Od>
-        $<$<CONFIG:Debug>:/Zi>
-        $<$<CONFIG:Debug>:/RTC1>
+        $<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CXX>>:/Od>
+        $<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CXX>>:/Zi>
+        $<$<AND:$<CONFIG:Debug>,$<COMPILE_LANGUAGE:CXX>>:/RTC1>
     )
 endif()
 

@@ -177,6 +177,9 @@ int* LBM_Graphics::draw_frame() {
 		for(uint d=0u; d<lbm->get_D(); d++) lbm->lbm_domain[d]->enqueue_update_fields(); // only call update_fields() if the time step has changed since the last rendered frame
 	}
 #endif // UPDATE_FIELDS
+#ifdef USE_CUDA_LBM
+	for(uint d=0u; d<lbm->get_D(); d++) lbm->lbm_domain[d]->sync_cuda_to_opencl_render();
+#endif // USE_CUDA_LBM
 	if(key_1) { visualization_modes = (visualization_modes&~0b11)|(((visualization_modes&0b11)+1)%4); key_1 = false; }
 	if(key_2) { visualization_modes ^= VIS_FIELD        ; key_2 = false; }
 	if(key_3) { visualization_modes ^= VIS_STREAMLINES  ; key_3 = false; }

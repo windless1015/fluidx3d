@@ -74,6 +74,31 @@ LBM_Domain::LBM_Domain(const Device_Info& device_info, const uint Nx, const uint
 	this->device = Device(device_info, opencl_c_code);
 	print_info("Allocating memory. This may take a few seconds.");
 	allocate(device); // lbm first
+#ifdef USE_CUDA_LBM
+	{
+		CudaLBMParams params;
+		params.Nx = Nx;
+		params.Ny = Ny;
+		params.Nz = Nz;
+		params.N = get_N();
+		params.nu = nu;
+		params.fx = fx;
+		params.fy = fy;
+		params.fz = fz;
+		params.sigma = sigma;
+		params.w = 1.0f/(3.0f*nu+0.5f);
+		params.def_6_sigma = 6.0f*sigma;
+		cuda_backend = new CudaLBMBackend();
+		cuda_backend->initialize(params);
+	}
+#endif // USE_CUDA_LBM
+}
+
+LBM_Domain::~LBM_Domain() {
+#ifdef USE_CUDA_LBM
+	delete cuda_backend;
+	cuda_backend = nullptr;
+#endif // USE_CUDA_LBM
 }
 
 void LBM_Domain::allocate(Device& device) {
@@ -100,31 +125,60 @@ void LBM_Domain::allocate(Device& device) {
 }
 
 void LBM_Domain::enqueue_initialize() { // call kernel_initialize
+#ifdef USE_CUDA_LBM
+	cuda_backend->upload_host_fields(rho.data(), u.data(), flags.data(), phi.data());
+	cuda_backend->kernel_initialize();
+#else
 	kernel_initialize.enqueue_run();
+#endif // USE_CUDA_LBM
 }
 void LBM_Domain::enqueue_stream_collide() { // call kernel_stream_collide to perform one LBM time step
+#ifdef USE_CUDA_LBM
+	cuda_backend->kernel_stream_collide(t);
+#else
 	kernel_stream_collide.set_parameters(4u, t, fx, fy, fz).enqueue_run();
+#endif // USE_CUDA_LBM
 }
 void LBM_Domain::enqueue_update_fields() { // update fields (rho, u, T) manually
 #ifndef UPDATE_FIELDS
 	if(t!=t_last_update_fields) { // only run kernel_update_fields if the time step has changed since last update
+	#ifdef USE_CUDA_LBM
+		cuda_backend->kernel_update_fields(t);
+	#else
 		kernel_update_fields.set_parameters(4u, t, fx, fy, fz).enqueue_run();
+	#endif // USE_CUDA_LBM
 		t_last_update_fields = t;
 	}
 #endif // UPDATE_FIELDS
 }
 #ifdef SURFACE
 void LBM_Domain::enqueue_surface_capture_outgoing() {
+#ifdef USE_CUDA_LBM
+	cuda_backend->kernel_surface_capture_outgoing(t);
+#else
 	kernel_surface_capture_outgoing.set_parameters(7u, t, fx, fy, fz).enqueue_run();
+#endif // USE_CUDA_LBM
 }
 void LBM_Domain::enqueue_surface_mass_exchange() {
+#ifdef USE_CUDA_LBM
+	cuda_backend->kernel_surface_mass_exchange();
+#else
 	kernel_surface_mass_exchange.enqueue_run();
+#endif // USE_CUDA_LBM
 }
 void LBM_Domain::enqueue_surface_flag_transition() {
+#ifdef USE_CUDA_LBM
+	cuda_backend->kernel_surface_flag_transition(t);
+#else
 	kernel_surface_flag_transition.set_parameters(4u, t).enqueue_run();
+#endif // USE_CUDA_LBM
 }
 void LBM_Domain::enqueue_surface_phi_recompute() {
+#ifdef USE_CUDA_LBM
+	cuda_backend->kernel_surface_phi_recompute();
+#else
 	kernel_surface_phi_recompute.enqueue_run();
+#endif // USE_CUDA_LBM
 }
 #endif // SURFACE
 
@@ -141,7 +195,24 @@ void LBM_Domain::reset_time_step() {
 #endif // UPDATE_FIELDS
 }
 void LBM_Domain::finish_queue() {
+#ifdef USE_CUDA_LBM
+	cuda_backend->synchronize();
+#else
 	device.finish_queue();
+#endif // USE_CUDA_LBM
+}
+
+void LBM_Domain::sync_cuda_to_opencl_render() {
+#ifdef USE_CUDA_LBM
+	cuda_backend->download_fields(rho.data(), u.data(), flags.data(), phi.data());
+	rho.enqueue_write_to_device();
+	u.enqueue_write_to_device();
+	flags.enqueue_write_to_device();
+#ifdef SURFACE
+	phi.enqueue_write_to_device();
+#endif // SURFACE
+	device.finish_queue();
+#endif // USE_CUDA_LBM
 }
 
 ulong LBM_Domain::get_area(const uint direction) {
