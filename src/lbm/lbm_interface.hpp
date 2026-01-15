@@ -2,7 +2,6 @@
 
 #include "../core/defines.hpp"
 #include "../core/opencl.hpp"
-#include "../render/graphics.hpp"
 #include "../core/units.hpp"
 #include "../app/info.hpp"
 

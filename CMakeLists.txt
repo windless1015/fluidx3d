@@ -30,11 +30,13 @@ set(CORE_HEADERS
 # LBM 模块
 set(LBM_SOURCES
     src/lbm/lbm.cpp
+    src/lbm/lbm_graphics.cpp
     src/lbm/kernel.cpp
     src/lbm/shapes.cpp
 )
 set(LBM_HEADERS
     src/lbm/lbm.hpp
+    src/lbm/lbm_graphics.hpp
     src/lbm/lbm_interface.hpp
     src/lbm/kernel.hpp
     src/lbm/shapes.hpp
@@ -58,6 +60,7 @@ set(APP_SOURCES
 )
 set(APP_HEADERS
     src/app/info.hpp
+    src/app/app_graphics.hpp
     src/app/setup.hpp
 )
 

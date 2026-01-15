@@ -2,7 +2,6 @@
 
 #include "../core/defines.hpp"
 #include "../core/opencl.hpp"
-#include "../render/graphics.hpp"
 #include "../core/units.hpp"
 #include "../app/info.hpp"
 
@@ -89,6 +88,7 @@ public:
 	void finish_queue();
 
 	const Device& get_device() const { return device; }
+	Device& get_device() { return device; }
 	uint get_Nx() const { return Nx; } // get (local) lattice dimensions in x-direction
 	uint get_Ny() const { return Ny; } // get (local) lattice dimensions in y-direction
 	uint get_Nz() const { return Nz; } // get (local) lattice dimensions in z-direction
@@ -98,6 +98,9 @@ public:
 	uint get_Dy() const { return Dy; } // get lattice domains in y-direction
 	uint get_Dz() const { return Dz; } // get lattice domains in z-direction
 	uint get_D() const { return Dx*Dy*Dz; } // get number of lattice domains
+	int get_Ox() const { return Ox; } // get lattice domain offset in x-direction
+	int get_Oy() const { return Oy; } // get lattice domain offset in y-direction
+	int get_Oz() const { return Oz; } // get lattice domain offset in z-direction
 	float get_nu() const { return nu; } // get kinematic shear viscosity
 	float get_tau() const { return 3.0f*get_nu()+0.5f; } // get LBM relaxation time
 	float get_fx() const { return fx; } // get global froce per volume
@@ -113,58 +116,6 @@ public:
 
 	void voxelize_mesh_on_device(const Mesh* mesh, const uchar flag=TYPE_S, const float3& rotation_center=float3(0.0f), const float3& linear_velocity=float3(0.0f), const float3& rotational_velocity=float3(0.0f)); // voxelize mesh
 	void enqueue_unvoxelize_mesh_on_device(const Mesh* mesh, const uchar flag=TYPE_S); // remove voxelized triangle mesh from LBM grid
-
-#ifdef GRAPHICS
-	class Graphics {
-	private:
-		Kernel kernel_clear; // reset bitmap and zbuffer
-		Memory<int> bitmap; // bitmap for rendering
-		Memory<int> zbuffer; // z-buffer for rendering
-		Memory<float> camera_parameters; // contains camera position, rotation, field of view etc.
-
-		LBM_Domain* lbm = nullptr;
-		Kernel kernel_graphics_flags; // render flag lattice with wireframe
-		Kernel kernel_graphics_flags_mc; // render flag lattice with marching-cubes
-		Kernel kernel_graphics_field; // render a colored velocity vector for each cell
-		Kernel kernel_graphics_field_slice; // render one slice of velocity field according to slics settings
-		Kernel kernel_graphics_streamline; // render streamlines
-		Kernel kernel_graphics_q; // render vorticity (Q-criterion)
-
-#ifdef SURFACE
-		const string path_skybox = get_exe_path()+"../skybox/skybox8k.png";
-		Image* skybox_image = nullptr;
-		Memory<int> skybox; // skybox for free surface raytracing
-		Kernel kernel_graphics_rasterize_phi; // rasterize free surface
-		Kernel kernel_graphics_raytrace_phi; // raytrace free surface
-		Image* get_skybox_image() const { return skybox_image; }
-#endif // SURFACE
-
-		ulong t_last_rendered_frame = max_ulong; // optimization to not call draw_frame() multiple times if camera_parameters and LBM time step are unchanged
-		bool update_camera(); // update camera_parameters and return if they are changed from their previous state
-
-	public:
-		Graphics() {} // default constructor
-		Graphics(LBM_Domain* lbm) {
-			this->lbm = lbm;
-#ifdef SURFACE
-			skybox_image = read_png(path_skybox);
-#endif // SURFACE
-		}
-		Graphics& operator=(const Graphics& graphics) { // copy assignment
-			lbm = graphics.lbm;
-#ifdef SURFACE
-			skybox_image = graphics.get_skybox_image();
-#endif // SURFACE
-			return *this;
-		}
-		void allocate(Device& device); // allocate memory for bitmap and zbuffer
-		bool enqueue_draw_frame(const int visualization_modes, const int field_mode=0, const int slice_mode=0, const int slice_x=0, const int slice_y=0, const int slice_z=0, const bool visualization_change=true); // main rendering function, calls rendering kernels, returns true if new frame is rendered, false if old frame is returned when camera has not moved
-		int* get_bitmap(); // returns pointer to bitmap
-		int* get_zbuffer(); // returns pointer to zbuffer
-		string device_defines() const; // returns preprocessor constants for embedding in OpenCL C code
-	}; // Graphics
-	Graphics graphics;
-#endif // GRAPHICS
 }; // LBM_Domain
 
 
@@ -486,66 +437,4 @@ public:
 	void voxelize_stl(const string& path, const float3& center, const float size=0.0f, const uchar flag=TYPE_S); // read and voxelize binary .stl file (no rotation)
 	void voxelize_stl(const string& path, const float size=0.0f, const uchar flag=TYPE_S); // read and voxelize binary .stl file (place in box center, no rotation)
 
-#ifdef GRAPHICS
-	class Graphics {
-	private:
-		LBM* lbm = nullptr;
-		std::atomic_int running_encoders = 0;
-		uint last_exported_frame = 0u; // for next_frame(...) function
-		int last_visualization_modes=0, last_field_mode=0, last_slice_mode=0, last_slice_x=0, last_slice_y=0, last_slice_z=0; // don't render a new frame if the scene hasn't changed since last frame
-		void default_settings() {
-			visualization_modes |= VIS_FLAG_LATTICE;
-		}
-
-	public:
-		int visualization_modes=0, field_mode=0, slice_mode=0, slice_x=0, slice_y=0, slice_z=0; // field_mode = { 0 (u), 1 (rho), 2 (T) }, slice_mode = { 0 (no slice), 1 (x), 2 (y), 3 (z), 4 (xz), 5 (xyz), 6 (yz), 7 (xy) }, slice_{xyz} = position of slices
-
-		Graphics() {} // default constructor
-		Graphics(LBM* lbm) {
-			this->lbm = lbm;
-			camera.set_zoom(0.5f*(float)fmax(fmax(lbm->get_Nx(), lbm->get_Ny()), lbm->get_Nz()));
-			slice_x = (int)lbm->get_Nx()/2;
-			slice_y = (int)lbm->get_Ny()/2;
-			slice_z = (int)lbm->get_Nz()/2;
-			default_settings();
-		}
-		~Graphics() { // destructor must wait for all encoder threads to finish
-			int last_value = running_encoders.load();
-			while(last_value>0) {
-				const int current_value = running_encoders.load();
-				if(last_value!=current_value) {
-					print_info("Finishing encoder threads: "+to_string(current_value));
-					last_value = current_value;
-				}
-				sleep(0.016);
-			}
-		}
-		Graphics& operator=(const Graphics& graphics) { // copy assignment
-			lbm = graphics.lbm;
-			visualization_modes = graphics.visualization_modes;
-			field_mode = graphics.field_mode;
-			slice_mode = graphics.slice_mode;
-			slice_x = graphics.slice_x;
-			slice_y = graphics.slice_y;
-			slice_z = graphics.slice_z;
-			return *this;
-		}
-
-		int* draw_frame(); // main rendering function, calls rendering kernels
-
-		void set_camera_centered(const float rx=0.0f, const float ry=0.0f, const float fov=100.0f, const float zoom=1.0f); // set camera centered
-		void set_camera_free(const float3& p=float3(0.0f), const float rx=0.0f, const float ry=0.0f, const float fov=100.0f); // set camera free
-		bool next_frame(const ulong total_time_steps, const float video_length_seconds); // returns true once simulation time has progressed enough to render the next video frame for a 60fps video of specified length
-		void print_frame(); // preview preview of current frame in console
-		void write_frame(const string& path="", const string& name="image", const string& extension=".png", bool print_preview=false); // save current frame
-		void write_frame(const uint x1, const uint y1, const uint x2, const uint y2, const string& path="", const string& name="image", const string& extension=".png", bool print_preview=false); // save current frame cropped with two corner points (x1,y1) and (x2,y2)
-		void write_frame_png(const string& path="", bool print_preview=false); // save current frame as .png file (smallest file size, but slow)
-		void write_frame_qoi(const string& path="", bool print_preview=false); // save current frame as .qoi file (small file size, fast)
-		void write_frame_bmp(const string& path="", bool print_preview=false); // save current frame as .bmp file (large file size, fast)
-		void write_frame_png(const uint x1, const uint y1, const uint x2, const uint y2, const string& path="", bool print_preview=false); // save current frame as .png file (smallest file size, but slow)
-		void write_frame_qoi(const uint x1, const uint y1, const uint x2, const uint y2, const string& path="", bool print_preview=false); // save current frame as .qoi file (small file size, fast)
-		void write_frame_bmp(const uint x1, const uint y1, const uint x2, const uint y2, const string& path="", bool print_preview=false); // save current frame as .bmp file (large file size, fast)
-	}; // Graphics
-	Graphics graphics;
-#endif // GRAPHICS
 }; // LBM

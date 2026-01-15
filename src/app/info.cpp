@@ -1,4 +1,5 @@
 #include "info.hpp"
+#include "app_graphics.hpp"
 #include "../lbm/lbm.hpp"
 
 Info info;
@@ -107,8 +108,8 @@ void Info::print_update() const {
 		const string camera_position = "float3("+alignr(9u, to_string(camera.pos.x/(float)lbm->get_Nx(), 6u))+"f*(float)Nx, "+alignr(9u, to_string(camera.pos.y/(float)lbm->get_Ny(), 6u))+"f*(float)Ny, "+alignr(9u, to_string(camera.pos.z/(float)lbm->get_Nz(), 6u))+"f*(float)Nz)";
 		const string camera_rx_ry_fov = alignr(6u, to_string(degrees(camera.rx)-90.0, 1u))+"f, "+alignr(5u, to_string(180.0-degrees(camera.ry), 1u))+"f, "+alignr(5u, to_string(camera.fov, 1u))+"f";
 		const string camera_zoom = alignr(8u, to_string(camera.zoom*(float)fmax(fmax(lbm->get_Nx(), lbm->get_Ny()), lbm->get_Nz())/(float)min(camera.width, camera.height), 6u))+"f";
-		if(camera.free) println("\rlbm.graphics.set_camera_free("+camera_position+", "+camera_rx_ry_fov+");");
-		else println("\rlbm.graphics.set_camera_centered("+camera_rx_ry_fov+", "+camera_zoom+");          ");
+		if(camera.free) println("\rapp_graphics->set_camera_free("+camera_position+", "+camera_rx_ry_fov+");");
+		else println("\rapp_graphics->set_camera_centered("+camera_rx_ry_fov+", "+camera_zoom+");          ");
 		key_G = false;
 	}
 #endif // GRAPHICS

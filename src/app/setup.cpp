@@ -6,6 +6,7 @@
  */
 
 #include "setup.hpp"
+#include "app_graphics.hpp"
 #include <atomic>
 #include <thread>
 
@@ -18,6 +19,11 @@ void main_setup() {
 	// Volume Force: (0, 0, -0.0002) - gravity in -z direction
 	// Surface Tension (sigma): 0.0001
 	LBM lbm(128u, 256u, 256u, 0.005f, 0.0f, 0.0f, -0.0002f, 0.0001f);
+
+#ifdef GRAPHICS
+	app_graphics = new LBM_Graphics(&lbm);
+	app_graphics->visualization_modes = lbm.get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
+#endif // GRAPHICS
 
 	// ============================================================================
 	// Geometry Setup - Dam Break Initial Condition
@@ -53,9 +59,6 @@ void main_setup() {
 	print_info("Initial total mass: " + to_string((float)initial_mass, 6u));
 
 	const uint log_interval = 1u;
-
-	// Set visualization mode: raytracing for single GPU, rasterizing for multi-GPU
-	lbm.graphics.visualization_modes = lbm.get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
 
 #if ENABLE_VTK_OUTPUT
 	// VTK export interval

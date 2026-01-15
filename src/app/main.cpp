@@ -1,6 +1,9 @@
 #include "info.hpp"
 #include "../lbm/lbm.hpp"
 #include "setup.hpp"
+#include "app_graphics.hpp"
+
+LBM_Graphics* app_graphics = nullptr;
 
 #ifdef GRAPHICS
 void draw_scale(const int field_mode, const int color) {
@@ -76,7 +79,7 @@ void main_label(const double frametime) {
 		if(!key_H) {
 			draw_label(camera.width-16*(FONT_WIDTH)-1, 2, "Press H for Help", c);
 		} else {
-			if(info.lbm->graphics.visualization_modes&(VIS_FIELD|VIS_STREAMLINES|VIS_Q_CRITERION)) draw_scale(info.lbm->graphics.field_mode, c);
+			if(app_graphics->visualization_modes&(VIS_FIELD|VIS_STREAMLINES|VIS_Q_CRITERION)) draw_scale(app_graphics->field_mode, c);
 #ifdef SURFACE
 			const bool surface = true;
 #else // SURFACE
@@ -85,7 +88,7 @@ void main_label(const double frametime) {
 			const int ox=2, oy=2;
 			int i = 0;
 
-			const int mode = info.lbm->graphics.visualization_modes;
+			const int mode = app_graphics->visualization_modes;
 			string mode_1 = (mode&3)==0 ? "inactive" : (mode&3)==VIS_FLAG_LATTICE ? " flags  " : (mode&3)==VIS_FLAG_SURFACE ? " solid  " : "  both  ";
 			string mode_2 = mode&VIS_FIELD ? " active " : "inactive";
 			string mode_3 = mode&VIS_STREAMLINES ? " active " : "inactive";
@@ -93,8 +96,8 @@ void main_label(const double frametime) {
 			string mode_5 = surface ? (mode&VIS_PHI_RASTERIZE ? " active " : "inactive") : "disabled";
 			string mode_6 = surface&&info.lbm->get_D()==1u ? (mode&VIS_PHI_RAYTRACE ? " active " : "inactive") : "disabled";
 
-			const int sl=info.lbm->graphics.slice_mode, fl=info.lbm->graphics.field_mode;
-			const string sx="x="+alignr(4u, info.lbm->graphics.slice_x), sy="y="+alignr(4u, info.lbm->graphics.slice_y), sz="z="+alignr(4u, info.lbm->graphics.slice_z);
+			const int sl=app_graphics->slice_mode, fl=app_graphics->field_mode;
+			const string sx="x="+alignr(4u, app_graphics->slice_x), sy="y="+alignr(4u, app_graphics->slice_y), sz="z="+alignr(4u, app_graphics->slice_z);
 			string slice = sl==0 ? "      disabled      " : sl==1 ? sx+"|      |      " : sl==2 ? "      |"+sy+"|      " : sl==3 ? "      |      |"+sz : sl==4 ? sx+"|      |"+sz : sl==5 ? sx+"|"+sy+"|"+sz : sl==6 ? "      |"+sy+"|"+sz : sx+"|"+sy+"|      ";
 			string field = fl==0 ? "     velocity u     " : "     density rho    ";
 
@@ -128,7 +131,7 @@ void main_label(const double frametime) {
 }
 
 void main_graphics() {
-	if(camera.allow_rendering) draw_bitmap(info.lbm->graphics.draw_frame());
+	if(camera.allow_rendering&&app_graphics!=nullptr) draw_bitmap(app_graphics->draw_frame());
 }
 #endif // GRAPHICS
 
