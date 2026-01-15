@@ -26,7 +26,7 @@ private:
 	float nu = 1.0f/6.0f; // kinematic shear viscosity
 	float fx=0.0f, fy=0.0f, fz=0.0f; // global force per volume
 	float sigma=0.0f; // surface tension coefficient
-	float alpha=1.0f, beta=1.0f, T_avg=1.0f; // alpha = thermal diffusion coefficient, beta = (volumetric) thermal expansion coefficient, T_avg = 1 = average temperature
+	float T_avg=1.0f; // average temperature
 
 	Device device; // OpenCL device associated with this LBM domain
 	Kernel kernel_initialize; // initialization kernel
@@ -55,7 +55,7 @@ public:
 	Memory<float> phi; // fill level of every cell
 #endif // SURFACE
 
-	LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta); // compiles OpenCL C code and allocates memory
+	LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma); // compiles OpenCL C code and allocates memory
 
 	void enqueue_initialize(); // write all data fields to device and call kernel_initialize
 	void enqueue_stream_collide(); // call kernel_stream_collide to perform one LBM time step
@@ -104,8 +104,6 @@ public:
 	float get_fy() const { return fy; } // get global froce per volume
 	float get_fz() const { return fz; } // get global froce per volume
 	float get_sigma() const { return sigma; } // get surface tension coefficient
-	float get_alpha() const { return alpha; } // get thermal diffusion coefficient
-	float get_beta() const { return beta; } // get thermal expansion coefficient
 	ulong get_t() const { return t; } // get discrete time step in LBM units
 	uint get_velocity_set() const; // get LBM velocity set
 	void set_fx(const float fx) { this->fx = fx; } // set global froce per volume
@@ -177,7 +175,7 @@ private:
 	uint Dx=1u, Dy=1u, Dz=1u; // lattice domains
 	bool initialized = false; // becomes true after LBM::initialize() has been called
 
-	void sanity_checks_constructor(const vector<Device_Info>& device_infos, const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta); // sanity checks on grid resolution and extension support
+	void sanity_checks_constructor(const vector<Device_Info>& device_infos, const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma); // sanity checks on grid resolution and extension support
 	void sanity_checks_initialization(); // sanity checks during initialization on used extensions based on used flags
 	void initialize(); // write all data fields to device and call kernel_initialize
 	void do_time_step(); // call kernel_stream_collide to perform one LBM time step
@@ -389,8 +387,8 @@ public:
 #ifdef SURFACE
 	Memory_Container<float> phi; // fill level of every cell
 #endif // SURFACE
-	LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f); // compiles OpenCL C code and allocates memory
-	LBM(const uint3 N, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f, const float alpha=0.0f, const float beta=0.0f); // compiles OpenCL C code and allocates memory
+	LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f); // compiles OpenCL C code and allocates memory
+	LBM(const uint3 N, const float nu, const float fx=0.0f, const float fy=0.0f, const float fz=0.0f, const float sigma=0.0f); // compiles OpenCL C code and allocates memory
 	~LBM();
 
 	void run(const ulong steps=max_ulong, const ulong total_steps=max_ulong); // initializes the LBM simulation (copies data to device and runs initialize kernel), then runs LBM
@@ -412,8 +410,6 @@ public:
 	float get_fy() const { return lbm_domain[0]->get_fy(); } // get global froce per volume
 	float get_fz() const { return lbm_domain[0]->get_fz(); } // get global froce per volume
 	float get_sigma() const { return lbm_domain[0]->get_sigma(); } // get surface tension coefficient
-	float get_alpha() const { return lbm_domain[0]->get_alpha(); } // get thermal diffusion coefficient
-	float get_beta() const { return lbm_domain[0]->get_beta(); } // get thermal expansion coefficient
 	ulong get_t() const { return lbm_domain[0]->get_t(); } // get discrete time step in LBM units
 	uint get_velocity_set() const { return lbm_domain[0]->get_velocity_set(); }
 	void set_fx(const float fx) { for(uint d=0u; d<get_D(); d++) lbm_domain[d]->set_fx(fx); } // set global froce per volume

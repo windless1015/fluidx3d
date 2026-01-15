@@ -53,8 +53,6 @@
 // Cell Type Flags
 // ============================================================================
 #define TYPE_S 0b00000001  // Solid boundary
-#define TYPE_E 0b00000010  // Equilibrium boundary
-
 #define TYPE_F 0b00001000  // Fluid
 #define TYPE_I 0b00010000  // Interface
 #define TYPE_G 0b00100000  // Gas

@@ -699,7 +699,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 		j[7] = x0+yp+zp; // 0++
 		uchar flags_cell = 0u; // check with cheap flags if the isosurface goes through the current marching-cubes cell (~15% performance boost)
 		for(uint i=0u; i<8u; i++) flags_cell |= flags[j[i]];
-		if(!(flags_cell&(TYPE_S|TYPE_E|TYPE_I))) continue; // cell is entirely inside/outside of the isosurface
+	if(!(flags_cell&(TYPE_S|TYPE_I))) continue; // cell is entirely inside/outside of the isosurface
 		float v[8];
 		for(uint i=0u; i<8u; i++) v[i] = phi[j[i]];
 		float3 triangles[15]; // maximum of 5 triangles with 3 vertices each
@@ -1236,7 +1236,7 @@ string opencl_c_container() { return R( // ########################## begin of O
 )+"#ifdef SURFACE"+R( // automatically generate the interface layer between fluid and gas
 	{ // separate block to avoid variable name conflicts
 		float phin = phi[n];
-		if(!(flagsn&(TYPE_S|TYPE_E|TYPE_T|TYPE_F|TYPE_I))) flagsn = (flagsn&~TYPE_SU)|TYPE_G; // change all non-fluid and non-interface flags to gas
+		if(!(flagsn&(TYPE_S|TYPE_F|TYPE_I))) flagsn = (flagsn&~TYPE_SU)|TYPE_G; // change all non-fluid and non-interface flags to gas
 		if((flagsn&TYPE_SU)==TYPE_G) { // cell with updated flags is gas
 			bool change = false; // check if cell has to be changed to interface
 			for(uint i=1u; i<def_velocity_set; i++) change = change||(flagsj[i]&TYPE_SU)==TYPE_F; // if neighbor flag fluid is set, the cell must be interface
@@ -1664,7 +1664,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 						calculate_f_eq(1.0f, un.x, un.y, un.z, feq); // use rhon=1 to prevent mass drift
 						store_f(n, feq, fi, j, t); // write to fi
 					}
-					flagsn = (flagsn&TYPE_BO)==TYPE_MS ? flagsn&~TYPE_MS : flagsn&~flag; // clear flag
+					flagsn = flagsn&~flag; // clear flag
 				} // else: don't change cell state
 			}
 		}
@@ -1767,8 +1767,6 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	const int c =  // coloring scheme
 		flagsn_bo==TYPE_S ? COLOR_S : // solid boundary
 
-		flagsn_bo==TYPE_E ? COLOR_E : // equilibrium boundary
-		flagsn_bo==TYPE_MS ? COLOR_M : // moving boundary
 		flagsn&TYPE_F ? COLOR_F : // fluid
 		flagsn&TYPE_I ? COLOR_I : // interface
 		flagsn&TYPE_X ? COLOR_X : // reserved type X
@@ -1843,7 +1841,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 	for(uint i=0u; i<15u; i++) camera_cache[i] = camera[i];
 	const float3 p = position(xyz);
 	if(!is_in_camera_frustrum(p, camera_cache)) return; // skip loading LBM data if grid cell is not visible
-	if(flags[n]&(TYPE_S|TYPE_E|TYPE_I|TYPE_G)) return;
+	if(flags[n]&(TYPE_S|TYPE_I|TYPE_G)) return;
 	const float3 un = load3(n, u); // cache velocity
 	const float ul = length(un);
 	if(def_scale_u*ul<0.1f) return; // don't draw lattice points where the velocity is lower than this threshold
@@ -1880,7 +1878,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 				else /****/ { if(tmy<tmz) { xyz.y += dy; tmy += tdy; } else { xyz.z += dz; tmz += tdz; } }
 				if(xyz.x<0 || xyz.y<0 || xyz.z<0 || xyz.x>=(int)Nx || xyz.y>=(int)Ny || xyz.z>=(int)Nz) break; // out of simulation box
 				const uxx n = index((uint3)((uint)clamp(xyz.x, 0, (int)Nx-1), (uint)clamp(xyz.y, 0, (int)Ny-1), (uint)clamp(xyz.z, 0, (int)Nz-1)));
-				if(!(flags[n]&(TYPE_S|TYPE_E|TYPE_G))) {
+				if(!(flags[n]&(TYPE_S|TYPE_G))) {
 					const float un = length(load3(n, u));
 					const float weight = fmin(un, fabs(un-0.5f/def_scale_u));
 					sum = fma(weight, un, sum);
@@ -1897,7 +1895,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 				else /****/ { if(tmy<tmz) { xyz.y += dy; tmy += tdy; } else { xyz.z += dz; tmz += tdz; } }
 				if(xyz.x<0 || xyz.y<0 || xyz.z<0 || xyz.x>=(int)Nx || xyz.y>=(int)Ny || xyz.z>=(int)Nz) break; // out of simulation box
 				const uxx n = index((uint3)((uint)clamp(xyz.x, 0, (int)Nx-1), (uint)clamp(xyz.y, 0, (int)Ny-1), (uint)clamp(xyz.z, 0, (int)Nz-1)));
-				if(!(flags[n]&(TYPE_S|TYPE_E|TYPE_G))) {
+				if(!(flags[n]&(TYPE_S|TYPE_G))) {
 					const float rhon = rho[n];
 					const float weight = fabs(rhon-1.0f);
 					sum = fma(weight, rhon, sum);
@@ -2016,7 +2014,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 			const uint y = (uint)(p1.y+1.5f*(float)def_Ny)%def_Ny;
 			const uint z = (uint)(p1.z+1.5f*(float)def_Nz)%def_Nz;
 			const uxx n = (uxx)x+(uxx)(y+z*def_Ny)*(uxx)def_Nx;
-			if(flags[n]&(TYPE_S|TYPE_E|TYPE_I|TYPE_G)) return;
+			if(flags[n]&(TYPE_S|TYPE_I|TYPE_G)) return;
 			const float3 un = load3(n, u); // interpolate_u(p1, u)
 			const float ul = length(un);
 			p0 = p1;
@@ -2038,7 +2036,7 @@ inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, f
 
 	const uxx n = get_global_id(0);
 	if(n>=(uxx)def_N||is_halo(n)) return; // don't execute graphics_q_field() on halo
-	if(flags[n]&(TYPE_S|TYPE_E|TYPE_I|TYPE_G)) return;
+	if(flags[n]&(TYPE_S|TYPE_I|TYPE_G)) return;
 	const float3 p = position(coordinates(n));
 	float camera_cache[15]; // cache camera parameters in case the kernel draws more than one shape
 	for(uint i=0u; i<15u; i++) camera_cache[i] = camera[i];

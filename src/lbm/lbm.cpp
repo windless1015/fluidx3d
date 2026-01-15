@@ -55,14 +55,13 @@ string default_filename(const string& name, const string& extension, const ulong
 
 
 
-LBM_Domain::LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta) { // constructor with manual device selection and domain offset
+LBM_Domain::LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma) { // constructor with manual device selection and domain offset
 	this->Nx = Nx; this->Ny = Ny; this->Nz = Nz;
 	this->Dx = Dx; this->Dy = Dy; this->Dz = Dz;
 	this->Ox = Ox; this->Oy = Oy; this->Oz = Oz;
 	this->nu = nu;
 	this->fx = fx; this->fy = fy; this->fz = fz;
 	this->sigma = sigma;
-	this->alpha = alpha; this->beta = beta;
 	string opencl_c_code;
 #ifdef GRAPHICS
 	graphics = Graphics(this);
@@ -253,16 +252,13 @@ string LBM_Domain::device_defines() const { return
 #endif // TRT
 
 	"\n	#define TYPE_S 0x01" // 0b00000001 // (stationary or moving) solid boundary
-	"\n	#define TYPE_E 0x02" // 0b00000010 // equilibrium boundary (inflow/outflow)
-	"\n	#define TYPE_T 0x04" // 0b00000100 // temperature boundary
 	"\n	#define TYPE_F 0x08" // 0b00001000 // fluid
 	"\n	#define TYPE_I 0x10" // 0b00010000 // interface
 	"\n	#define TYPE_G 0x20" // 0b00100000 // gas
 	"\n	#define TYPE_X 0x40" // 0b01000000 // reserved type X
 	"\n	#define TYPE_Y 0x80" // 0b10000000 // reserved type Y
 
-	"\n	#define TYPE_MS 0x03" // 0b00000011 // cell next to moving solid boundary
-	"\n	#define TYPE_BO 0x03" // 0b00000011 // any flag bit used for boundaries (temperature excluded)
+	"\n	#define TYPE_BO 0x01" // 0b00000001 // any flag bit used for boundaries (temperature excluded)
 	"\n	#define TYPE_IF 0x18" // 0b00011000 // change from interface to fluid
 	"\n	#define TYPE_IG 0x30" // 0b00110000 // change from interface to gas
 	"\n	#define TYPE_GI 0x38" // 0b00111000 // change from gas to interface
@@ -411,9 +407,6 @@ string LBM_Domain::Graphics::device_defines() const { return
 	"\n	#define def_absorption_color " +to_string(GRAPHICS_RAYTRACING_COLOR)+"" // absorption color of fluid for raytracing graphics
 
 	"\n	#define COLOR_S (127<<16|127<<8|127)" // (stationary or moving) solid boundary
-	"\n	#define COLOR_E (  0<<16|255<<8|  0)" // equilibrium boundary (inflow/outflow)
-	"\n	#define COLOR_M (255<<16|  0<<8|255)" // cells next to moving solid boundary
-
 	"\n	#define COLOR_F (  0<<16|  0<<8|255)" // fluid
 	"\n	#define COLOR_I (  0<<16|255<<8|255)" // interface
 	"\n	#define COLOR_0 (127<<16|127<<8|127)" // regular cell or gas
@@ -436,13 +429,13 @@ string LBM_Domain::Graphics::device_defines() const { return
 
 
 
-LBM::LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta) {
+LBM::LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma) {
 	this->Nx = Nx; this->Ny = Ny; this->Nz = Nz;
 	this->Dx = 1u; this->Dy = 1u; this->Dz = 1u;
 	const vector<Device_Info> device_infos = { select_device_with_most_flops(get_devices()) };
-	sanity_checks_constructor(device_infos, this->Nx, this->Ny, this->Nz, nu, fx, fy, fz, sigma, alpha, beta);
+	sanity_checks_constructor(device_infos, this->Nx, this->Ny, this->Nz, nu, fx, fy, fz, sigma);
 	lbm_domain = new LBM_Domain*[1u];
-	lbm_domain[0] = new LBM_Domain(device_infos[0], this->Nx, this->Ny, this->Nz, 1u, 1u, 1u, 0, 0, 0, nu, fx, fy, fz, sigma, alpha, beta);
+	lbm_domain[0] = new LBM_Domain(device_infos[0], this->Nx, this->Ny, this->Nz, 1u, 1u, 1u, 0, 0, 0, nu, fx, fy, fz, sigma);
 	{
 		Memory<float>** buffers_rho = new Memory<float>*[1u];
 		buffers_rho[0] = &(lbm_domain[0]->rho);
@@ -466,8 +459,8 @@ LBM::LBM(const uint Nx, const uint Ny, const uint Nz, const float nu, const floa
 	graphics = Graphics(this);
 #endif // GRAPHICS
 }
-LBM::LBM(const uint3 N, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta)
-	:LBM(N.x, N.y, N.z, nu, fx, fy, fz, sigma, alpha, beta) {
+LBM::LBM(const uint3 N, const float nu, const float fx, const float fy, const float fz, const float sigma)
+	:LBM(N.x, N.y, N.z, nu, fx, fy, fz, sigma) {
 }
 LBM::~LBM() {
 #ifdef GRAPHICS
@@ -478,7 +471,7 @@ LBM::~LBM() {
 	delete[] lbm_domain;
 }
 
-void LBM::sanity_checks_constructor(const vector<Device_Info>& device_infos, const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma, const float alpha, const float beta) { // sanity checks on grid resolution and extension support
+void LBM::sanity_checks_constructor(const vector<Device_Info>& device_infos, const uint Nx, const uint Ny, const uint Nz, const float nu, const float fx, const float fy, const float fz, const float sigma) { // sanity checks on grid resolution and extension support
 	if((ulong)Nx*(ulong)Ny*(ulong)Nz==0ull) print_error("Grid point number is 0: "+to_string(Nx)+"x"+to_string(Ny)+"x"+to_string(Nz)+" = 0.");
 	uint memory_available = max_uint; // in MB
 	for(Device_Info device_info : device_infos) memory_available = min(memory_available, device_info.memory);
