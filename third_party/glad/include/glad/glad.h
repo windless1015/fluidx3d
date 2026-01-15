@@ -52,10 +52,14 @@ typedef ptrdiff_t GLintptr;
 #define GL_TEXTURE_MAG_FILTER 0x2800
 #define GL_TEXTURE_WRAP_S 0x2802
 #define GL_TEXTURE_WRAP_T 0x2803
+#define GL_TEXTURE_WRAP_R 0x8072
 #define GL_CLAMP_TO_EDGE 0x812F
 #define GL_LINEAR 0x2601
 #define GL_UNPACK_ALIGNMENT 0x0CF5
 #define GL_DEPTH_TEST 0x0B71
+#define GL_TEXTURE_3D 0x806F
+#define GL_RED 0x1903
+#define GL_R32F 0x822E
 
 typedef void* (*GLADloadproc)(const char* name);
 int gladLoadGLLoader(GLADloadproc load);
@@ -85,13 +89,21 @@ void glGetProgramInfoLog(GLuint program, GLsizei bufSize, GLsizei* length, char*
 void glGetProgramiv(GLuint program, GLenum pname, GLint* params);
 void glGetShaderInfoLog(GLuint shader, GLsizei bufSize, GLsizei* length, char* infoLog);
 void glGetShaderiv(GLuint shader, GLenum pname, GLint* params);
+GLint glGetUniformLocation(GLuint program, const char* name);
 void glLinkProgram(GLuint program);
 void glPixelStorei(GLenum pname, GLint param);
 void glShaderSource(GLuint shader, GLsizei count, const char* const* string, const GLint* length);
 void glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void* pixels);
+void glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void* pixels);
 void glTexParameteri(GLenum target, GLenum pname, GLint param);
 void glTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLenum type, const void* pixels);
+void glTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void* pixels);
 void glUseProgram(GLuint program);
+void glUniform1i(GLint location, GLint v0);
+void glUniform1f(GLint location, GLfloat v0);
+void glUniform2f(GLint location, GLfloat v0, GLfloat v1);
+void glUniform3f(GLint location, GLfloat v0, GLfloat v1, GLfloat v2);
+void glUniformMatrix3fv(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
 void glVertexAttribPointer(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer);
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height);
 void glDisable(GLenum cap);

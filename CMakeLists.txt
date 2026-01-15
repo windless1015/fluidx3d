@@ -56,10 +56,12 @@ set(RENDER_HEADERS
 set(RENDER_GL_SOURCES
     src/render_gl/gl_renderer.cpp
     src/render_gl/glfw_window.cpp
+    src/render_gl/gl_raytrace.cpp
 )
 set(RENDER_GL_HEADERS
     src/render_gl/gl_renderer.hpp
     src/render_gl/glfw_window.hpp
+    src/render_gl/gl_raytrace.hpp
 )
 
 # App 模块

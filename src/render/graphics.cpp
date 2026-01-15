@@ -1,7 +1,9 @@
 #include "graphics.hpp"
 #if defined(INTERACTIVE_GRAPHICS_GLFW)
 #include "../render_gl/glfw_window.hpp"
-#include "../render_gl/gl_renderer.hpp"
+#include "../render_gl/gl_raytrace.hpp"
+#include "../app/info.hpp"
+#include "../lbm/lbm.hpp"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #endif // INTERACTIVE_GRAPHICS_GLFW
@@ -471,7 +473,7 @@ int main(int argc, char* argv[]) {
 	window.set_cursor_visible(false);
 	window.set_cursor_pos(width/2.0, height/2.0);
 
-	GLRenderer renderer;
+	GLRaytraceRenderer renderer;
 	if(!renderer.initialize(width, height)) return 1;
 
 	window.set_callbacks({
@@ -504,10 +506,19 @@ int main(int argc, char* argv[]) {
 	while(running && !window.should_close()) {
 		camera.rendring_frame.lock(); // block rendering for other threads until finished
 		camera.update_state(fmax(1.0/(double)camera.fps_limit, frametime));
-		main_graphics();
-		main_label(frametime);
-		renderer.upload_frame(camera.bitmap, camera.width, camera.height);
-		renderer.render();
+		if(info.lbm != nullptr) {
+#ifdef SURFACE
+			const uint nx = info.lbm->get_Nx();
+			const uint ny = info.lbm->get_Ny();
+			const uint nz = info.lbm->get_Nz();
+			info.lbm->lbm_domain[0]->phi.read_from_device();
+			const float* phi = info.lbm->lbm_domain[0]->phi.data();
+			renderer.update_volume(phi, nx, ny, nz);
+			const float3 box_min = float3(-0.5f*(float)nx+0.5f, -0.5f*(float)ny+0.5f, -0.5f*(float)nz+0.5f);
+			const float3 box_max = float3( 0.5f*(float)nx-0.5f,  0.5f*(float)ny-0.5f,  0.5f*(float)nz-0.5f);
+			renderer.render(camera.pos, camera.R, (float)camera.fov, box_min, box_max, camera.width, camera.height);
+#endif // SURFACE
+		}
 		window.swap();
 		camera.rendring_frame.unlock();
 		window.poll();
