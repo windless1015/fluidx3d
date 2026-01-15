@@ -34,10 +34,10 @@ private:
 	Memory<fpxx> fi; // LBM density distribution functions (DDFs); only exist in device memory
 	ulong t_last_update_fields = max_ulong; // optimization to not call kernel_update_fields multiple times if (rho, u, T) are already up-to-date
 #ifdef SURFACE
-	Kernel kernel_surface_0; // additional kernel for computing mass conservation and mass flux computation
-	Kernel kernel_surface_1; // additional kernel for flag handling
-	Kernel kernel_surface_2; // additional kernel for flag handling
-	Kernel kernel_surface_3; // additional kernel for flag handling and mass conservation
+	Kernel kernel_surface_capture_outgoing; // mass conservation and mass flux computation
+	Kernel kernel_surface_mass_exchange; // mass exchange between phases
+	Kernel kernel_surface_flag_transition; // topology/flag transitions
+	Kernel kernel_surface_phi_recompute; // recompute phi and enforce conservation
 	//Memory<float> mass; // fluid mass; phi=mass/rho
 	Memory<float> massex; // excess mass; used for mass conservation
 #endif // SURFACE
@@ -78,10 +78,10 @@ public:
 #endif // SURFACE
 
 #ifdef SURFACE
-	void enqueue_surface_0();
-	void enqueue_surface_1();
-	void enqueue_surface_2();
-	void enqueue_surface_3();
+	void enqueue_surface_capture_outgoing();
+	void enqueue_surface_mass_exchange();
+	void enqueue_surface_flag_transition();
+	void enqueue_surface_phi_recompute();
 #endif // SURFACE
 	void increment_time_step(const uint steps=1u); // increment time step
 	void reset_time_step(); // reset time step

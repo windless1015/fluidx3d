@@ -92,10 +92,10 @@ void LBM_Domain::allocate(Device& device) {
 	massex = Memory<float>(device, N, 1u, false);
 	kernel_initialize.add_parameters(mass, massex, phi);
 	kernel_stream_collide.add_parameters(mass);
-	kernel_surface_0 = Kernel(device, N, "surface_0", fi, rho, u, flags, mass, massex, phi, t, fx, fy, fz);
-	kernel_surface_1 = Kernel(device, N, "surface_1", flags);
-	kernel_surface_2 = Kernel(device, N, "surface_2", fi, rho, u, flags, t);
-	kernel_surface_3 = Kernel(device, N, "surface_3", rho, flags, mass, massex, phi);
+	kernel_surface_capture_outgoing = Kernel(device, N, "surface_0", fi, rho, u, flags, mass, massex, phi, t, fx, fy, fz);
+	kernel_surface_mass_exchange = Kernel(device, N, "surface_1", flags);
+	kernel_surface_flag_transition = Kernel(device, N, "surface_2", fi, rho, u, flags, t);
+	kernel_surface_phi_recompute = Kernel(device, N, "surface_3", rho, flags, mass, massex, phi);
 #endif // SURFACE
 }
 
@@ -114,17 +114,17 @@ void LBM_Domain::enqueue_update_fields() { // update fields (rho, u, T) manually
 #endif // UPDATE_FIELDS
 }
 #ifdef SURFACE
-void LBM_Domain::enqueue_surface_0() {
-	kernel_surface_0.set_parameters(7u, t, fx, fy, fz).enqueue_run();
+void LBM_Domain::enqueue_surface_capture_outgoing() {
+	kernel_surface_capture_outgoing.set_parameters(7u, t, fx, fy, fz).enqueue_run();
 }
-void LBM_Domain::enqueue_surface_1() {
-	kernel_surface_1.enqueue_run();
+void LBM_Domain::enqueue_surface_mass_exchange() {
+	kernel_surface_mass_exchange.enqueue_run();
 }
-void LBM_Domain::enqueue_surface_2() {
-	kernel_surface_2.set_parameters(4u, t).enqueue_run();
+void LBM_Domain::enqueue_surface_flag_transition() {
+	kernel_surface_flag_transition.set_parameters(4u, t).enqueue_run();
 }
-void LBM_Domain::enqueue_surface_3() {
-	kernel_surface_3.enqueue_run();
+void LBM_Domain::enqueue_surface_phi_recompute() {
+	kernel_surface_phi_recompute.enqueue_run();
 }
 #endif // SURFACE
 
@@ -396,7 +396,7 @@ void LBM::step_exchange_rho_u_flags() {
 }
 #ifdef SURFACE
 void LBM::step_surface_capture_outgoing() {
-	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_0();
+	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_capture_outgoing();
 }
 void LBM::step_surface_topology_update() {
 	step_surface_mass_exchange();
@@ -405,13 +405,13 @@ void LBM::step_surface_topology_update() {
 	step_surface_excess_mass_distribute();
 }
 void LBM::step_surface_mass_exchange() {
-	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_1();
+	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_mass_exchange();
 }
 void LBM::step_surface_flag_transition() {
-	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_2();
+	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_flag_transition();
 }
 void LBM::step_surface_phi_recompute() {
-	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_3();
+	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_phi_recompute();
 }
 void LBM::step_surface_excess_mass_distribute() {
 }
