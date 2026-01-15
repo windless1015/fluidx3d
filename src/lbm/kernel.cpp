@@ -1534,20 +1534,89 @@ string opencl_c_container() { return R( // ########################## begin of O
 	}
 	mass[n] = massn;
 }
+)+R(
+inline void surface_1_handle_interface_to_fluid(const uxx n, global uchar* flags) { // prevent neighbors from interface->fluid cells to become/be gas cells
+	uxx j[def_velocity_set]; // neighbor indices
+	neighbors(n, j); // calculate neighbor indices
+	for(uint i=1u; i<def_velocity_set; i++) {
+		const uchar flagsji = flags[j[i]];
+		const uchar flagsji_su = flagsji&(TYPE_SU|TYPE_S); // extract SURFACE flags
+		const uchar flagsji_r = flagsji&~TYPE_SU; // extract all non-SURFACE flags
+		if(flagsji_su==TYPE_IG) flags[j[i]] = flagsji_r|TYPE_I; // prevent interface neighbor cells from becoming gas
+		else if(flagsji_su==TYPE_G) flags[j[i]] = flagsji_r|TYPE_GI; // neighbor cell was gas and must change to interface
+	}
+}
+inline void surface_2_init_gas_to_interface(const uxx n, global fpxx* fi, const global float* rho, const global float* u, const global uchar* flags, const ulong t) {
+	float rhon, uxn, uyn, uzn; // average over all fluid/interface neighbors
+	average_neighbors_non_gas(n, rho, u, flags, &rhon, &uxn, &uyn, &uzn); // get average rho/u from all fluid/interface neighbors
+	float feq[def_velocity_set];
+	calculate_f_eq(rhon, uxn, uyn, uzn, feq); // calculate equilibrium DDFs
+	uxx j[def_velocity_set];
+	neighbors(n, j);
+	store_f(n, feq, fi, j, t); // write feq to fi in video memory
+}
+inline void surface_2_handle_interface_to_gas(const uxx n, global uchar* flags) {
+	uxx j[def_velocity_set]; // neighbor indices
+	neighbors(n, j); // calculate neighbor indices
+	for(uint i=1u; i<def_velocity_set; i++) {
+		const uchar flagsji = flags[j[i]];
+		const uchar flagsji_su = flagsji&(TYPE_SU|TYPE_S); // extract SURFACE flags
+		const uchar flagsji_r = flagsji&~TYPE_SU; // extract all non-SURFACE flags
+		if(flagsji_su==TYPE_F||flagsji_su==TYPE_IF) {
+			flags[j[i]] = flagsji_r|TYPE_I; // prevent fluid or interface neighbors that turn to fluid from being/becoming fluid
+		}
+	}
+}
+inline void surface_3_apply_fluid_cell(const float rhon, float* massn, float* massexn, float* phin) {
+	*massexn = *massn-rhon; // dump mass-rho difference into excess mass
+	*massn = rhon; // fluid cell mass has to equal rho
+	*phin = 1.0f;
+}
+inline void surface_3_apply_interface_cell(const float rhon, float* massn, float* massexn, float* phin) {
+	*massexn = *massn>rhon ? *massn-rhon : *massn<0.0f ? *massn : 0.0f; // allow interface cells with mass>rho or mass<0
+	*massn = clamp(*massn, 0.0f, rhon);
+	*phin = calculate_phi(rhon, *massn, TYPE_I); // calculate fill level for next step (only necessary for interface cells)
+}
+inline void surface_3_apply_gas_cell(float* massn, float* massexn, float* phin) {
+	*massexn = *massn; // dump remaining mass into excess mass
+	*massn = 0.0f;
+	*phin = 0.0f;
+}
+inline void surface_3_apply_interface_to_fluid(const uxx n, const float rhon, global uchar* flags, float* massn, float* massexn, float* phin) {
+	flags[n] = (flags[n]&~TYPE_SU)|TYPE_F; // cell becomes fluid
+	*massexn = *massn-rhon; // dump mass-rho difference into excess mass
+	*massn = rhon; // fluid cell mass has to equal rho
+	*phin = 1.0f; // set phi[n] to 1.0f for fluid cells
+}
+inline void surface_3_apply_interface_to_gas(const uxx n, global uchar* flags, float* massn, float* massexn, float* phin) {
+	flags[n] = (flags[n]&~TYPE_SU)|TYPE_G; // cell becomes gas
+	*massexn = *massn; // dump remaining mass into excess mass
+	*massn = 0.0f; // gas mass has to be zero
+	*phin = 0.0f; // set phi[n] to 0.0f for gas cells
+}
+inline void surface_3_apply_gas_to_interface(const uxx n, const float rhon, global uchar* flags, float* massn, float* massexn, float* phin) {
+	flags[n] = (flags[n]&~TYPE_SU)|TYPE_I; // cell becomes interface
+	*massexn = *massn>rhon ? *massn-rhon : *massn<0.0f ? *massn : 0.0f; // allow interface cells with mass>rho or mass<0
+	*massn = clamp(*massn, 0.0f, rhon);
+	*phin = calculate_phi(rhon, *massn, TYPE_I); // calculate fill level for next step (only necessary for interface cells)
+}
+inline void surface_3_distribute_excess_mass(const uxx n, global uchar* flags, float* massn, float* massexn) {
+	uxx j[def_velocity_set]; // neighbor indices
+	neighbors(n, j); // calculate neighbor indices
+	uint counter = 0u; // count (fluid|interface) neighbors
+	for(uint i=1u; i<def_velocity_set; i++) { // simple model: distribute excess mass equally to all interface and fluid neighbors
+		const uchar flagsji_su = flags[j[i]]&(TYPE_SU|TYPE_S); // extract SURFACE flags
+		counter += (uint)(flagsji_su==TYPE_F||flagsji_su==TYPE_I||flagsji_su==TYPE_IF||flagsji_su==TYPE_GI); // avoid branching
+	}
+	*massn += counter>0u ? 0.0f : *massexn; // if excess mass can't be distributed to neighboring interface or fluid cells, add it to local mass (ensure mass conservation)
+	*massexn = counter>0u ? *massexn/(float)counter : 0.0f; // divide excess mass up for all interface or fluid neighbors
+}
 )+R(kernel void surface_1(global uchar* flags) { // prevent neighbors from interface->fluid cells to become/be gas cells
 	const uxx n = get_global_id(0); // n = x+(y+z*Ny)*Nx
 	if(n>=(uxx)def_N) return; // execute surface_1() also on halo
 	const uchar flagsn_sus = flags[n]&(TYPE_SU|TYPE_S); // extract SURFACE flags
 	if(flagsn_sus==TYPE_IF) { // flag interface->fluid is set
-		uxx j[def_velocity_set]; // neighbor indices
-		neighbors(n, j); // calculate neighbor indices
-		for(uint i=1u; i<def_velocity_set; i++) {
-			const uchar flagsji = flags[j[i]];
-			const uchar flagsji_su = flagsji&(TYPE_SU|TYPE_S); // extract SURFACE flags
-			const uchar flagsji_r = flagsji&~TYPE_SU; // extract all non-SURFACE flags
-			if(flagsji_su==TYPE_IG) flags[j[i]] = flagsji_r|TYPE_I; // prevent interface neighbor cells from becoming gas
-			else if(flagsji_su==TYPE_G) flags[j[i]] = flagsji_r|TYPE_GI; // neighbor cell was gas and must change to interface
-		}
+		surface_1_handle_interface_to_fluid(n, flags);
 	}
 } // possible types at the end of surface_1(): TYPE_F / TYPE_I / TYPE_G / TYPE_IF / TYPE_IG / TYPE_GI
 )+R(kernel void surface_2(global fpxx* fi, const global float* rho, const global float* u, global uchar* flags, const ulong t) {  // apply flag changes and calculate excess mass
@@ -1555,24 +1624,9 @@ string opencl_c_container() { return R( // ########################## begin of O
 	if(n>=(uxx)def_N) return; // execute surface_2() also on halo
 	const uchar flagsn_sus = flags[n]&(TYPE_SU|TYPE_S); // extract SURFACE flags
 	if(flagsn_sus==TYPE_GI) { // initialize the fi of gas cells that should become interface
-		float rhon, uxn, uyn, uzn; // average over all fluid/interface neighbors
-		average_neighbors_non_gas(n, rho, u, flags, &rhon, &uxn, &uyn, &uzn); // get average rho/u from all fluid/interface neighbors
-		float feq[def_velocity_set];
-		calculate_f_eq(rhon, uxn, uyn, uzn, feq); // calculate equilibrium DDFs
-		uxx j[def_velocity_set];
-		neighbors(n, j);
-		store_f(n, feq, fi, j, t); // write feq to fi in video memory
+		surface_2_init_gas_to_interface(n, fi, rho, u, flags, t);
 	} else if(flagsn_sus==TYPE_IG) { // flag interface->gas is set
-		uxx j[def_velocity_set]; // neighbor indices
-		neighbors(n, j); // calculate neighbor indices
-		for(uint i=1u; i<def_velocity_set; i++) {
-			const uchar flagsji = flags[j[i]];
-			const uchar flagsji_su = flagsji&(TYPE_SU|TYPE_S); // extract SURFACE flags
-			const uchar flagsji_r = flagsji&~TYPE_SU; // extract all non-SURFACE flags
-			if(flagsji_su==TYPE_F||flagsji_su==TYPE_IF) {
-				flags[j[i]] = flagsji_r|TYPE_I; // prevent fluid or interface neighbors that turn to fluid from being/becoming fluid
-			}
-		}
+		surface_2_handle_interface_to_gas(n, flags);
 	}
 } // possible types at the end of surface_2(): TYPE_F / TYPE_I / TYPE_G / TYPE_IF / TYPE_IG / TYPE_GI
 )+R(kernel void surface_3(const global float* rho, global uchar* flags, global float* mass, global float* massex, global float* phi) { // apply flag changes and calculate excess mass
@@ -1585,42 +1639,19 @@ string opencl_c_container() { return R( // ########################## begin of O
 	float massexn = 0.0f; // excess mass of cell n
 	float phin = 0.0f;
 	if(flagsn_sus==TYPE_F) { // regular fluid cell
-		massexn = massn-rhon; // dump mass-rho difference into excess mass
-		massn = rhon; // fluid cell mass has to equal rho
-		phin = 1.0f;
+		surface_3_apply_fluid_cell(rhon, &massn, &massexn, &phin);
 	} else if(flagsn_sus==TYPE_I) { // regular interface cell
-		massexn = massn>rhon ? massn-rhon : massn<0.0f ? massn : 0.0f; // allow interface cells with mass>rho or mass<0
-		massn = clamp(massn, 0.0f, rhon);
-		phin = calculate_phi(rhon, massn, TYPE_I); // calculate fill level for next step (only necessary for interface cells)
+		surface_3_apply_interface_cell(rhon, &massn, &massexn, &phin);
 	} else if(flagsn_sus==TYPE_G) { // regular gas cell
-		massexn = massn; // dump remaining mass into excess mass
-		massn = 0.0f;
-		phin = 0.0f;
+		surface_3_apply_gas_cell(&massn, &massexn, &phin);
 	} else if(flagsn_sus==TYPE_IF) { // flag interface->fluid is set
-		flags[n] = (flags[n]&~TYPE_SU)|TYPE_F; // cell becomes fluid
-		massexn = massn-rhon; // dump mass-rho difference into excess mass
-		massn = rhon; // fluid cell mass has to equal rho
-		phin = 1.0f; // set phi[n] to 1.0f for fluid cells
+		surface_3_apply_interface_to_fluid(n, rhon, flags, &massn, &massexn, &phin);
 	} else if(flagsn_sus==TYPE_IG) { // flag interface->gas is set
-		flags[n] = (flags[n]&~TYPE_SU)|TYPE_G; // cell becomes gas
-		massexn = massn; // dump remaining mass into excess mass
-		massn = 0.0f; // gas mass has to be zero
-		phin = 0.0f; // set phi[n] to 0.0f for gas cells
+		surface_3_apply_interface_to_gas(n, flags, &massn, &massexn, &phin);
 	} else if(flagsn_sus==TYPE_GI) { // flag gas->interface is set
-		flags[n] = (flags[n]&~TYPE_SU)|TYPE_I; // cell becomes interface
-		massexn = massn>rhon ? massn-rhon : massn<0.0f ? massn : 0.0f; // allow interface cells with mass>rho or mass<0
-		massn = clamp(massn, 0.0f, rhon);
-		phin = calculate_phi(rhon, massn, TYPE_I); // calculate fill level for next step (only necessary for interface cells)
+		surface_3_apply_gas_to_interface(n, rhon, flags, &massn, &massexn, &phin);
 	}
-	uxx j[def_velocity_set]; // neighbor indices
-	neighbors(n, j); // calculate neighbor indices
-	uint counter = 0u; // count (fluid|interface) neighbors
-	for(uint i=1u; i<def_velocity_set; i++) { // simple model: distribute excess mass equally to all interface and fluid neighbors
-		const uchar flagsji_su = flags[j[i]]&(TYPE_SU|TYPE_S); // extract SURFACE flags
-		counter += (uint)(flagsji_su==TYPE_F||flagsji_su==TYPE_I||flagsji_su==TYPE_IF||flagsji_su==TYPE_GI); // avoid branching
-	}
-	massn += counter>0u ? 0.0f : massexn; // if excess mass can't be distributed to neighboring interface or fluid cells, add it to local mass (ensure mass conservation)
-	massexn = counter>0u ? massexn/(float)counter : 0.0f; // divide excess mass up for all interface or fluid neighbors
+	surface_3_distribute_excess_mass(n, flags, &massn, &massexn);
 	mass[n] = massn; // update mass
 	massex[n] = massexn; // update excess mass
 	phi[n] = phin; // update phi

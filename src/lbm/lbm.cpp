@@ -824,11 +824,23 @@ void LBM::step_surface_capture_outgoing() {
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_0();
 }
 void LBM::step_surface_topology_update() {
+	step_surface_mass_exchange();
+	step_surface_flag_transition();
+	step_surface_phi_recompute();
+	step_surface_excess_mass_distribute();
+}
+void LBM::step_surface_mass_exchange() {
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_1();
+}
+void LBM::step_surface_flag_transition() {
 	communicate_flags();
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_2();
+}
+void LBM::step_surface_phi_recompute() {
 	communicate_flags();
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_3();
+}
+void LBM::step_surface_excess_mass_distribute() {
 	communicate_phi_massex_flags();
 }
 #endif // SURFACE

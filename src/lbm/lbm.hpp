@@ -236,6 +236,10 @@ private:
 #ifdef SURFACE
 	void step_surface_capture_outgoing();
 	void step_surface_topology_update();
+	void step_surface_mass_exchange();
+	void step_surface_flag_transition();
+	void step_surface_phi_recompute();
+	void step_surface_excess_mass_distribute();
 #endif // SURFACE
 	void step_exchange_fi();
 #ifdef PARTICLES
