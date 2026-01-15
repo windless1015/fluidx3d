@@ -1,4 +1,10 @@
 #include "graphics.hpp"
+#if defined(INTERACTIVE_GRAPHICS_GLFW)
+#include "../render_gl/glfw_window.hpp"
+#include "../render_gl/gl_renderer.hpp"
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#endif // INTERACTIVE_GRAPHICS_GLFW
 
 vector<string> main_arguments = vector<string>(); // console arguments
 std::atomic_bool running = true;
@@ -435,7 +441,89 @@ void key_bindings(const int key) {
 	camera.input_key(key);
 }
 
-#if defined(INTERACTIVE_GRAPHICS)
+#if defined(INTERACTIVE_GRAPHICS_GLFW)
+
+static int key_glfw_to_internal(const int key) {
+	if(key>=GLFW_KEY_A && key<=GLFW_KEY_Z) return 'A'+(key-GLFW_KEY_A);
+	if(key>=GLFW_KEY_0 && key<=GLFW_KEY_9) return '0'+(key-GLFW_KEY_0);
+	switch(key) {
+		case GLFW_KEY_SPACE: return ' ';
+		case GLFW_KEY_ESCAPE: return 27;
+		case GLFW_KEY_KP_ADD:
+		case GLFW_KEY_EQUAL: return '+';
+		case GLFW_KEY_KP_SUBTRACT:
+		case GLFW_KEY_MINUS: return '-';
+		case GLFW_KEY_KP_MULTIPLY: return '*';
+		case GLFW_KEY_KP_DIVIDE: return '/';
+		case GLFW_KEY_COMMA: return ',';
+		case GLFW_KEY_PERIOD: return '.';
+		default: return 0;
+	}
+}
+
+int main(int argc, char* argv[]) {
+	main_arguments = get_main_arguments(argc, argv);
+
+	GlfwWindow window;
+	uint width = 0u, height = 0u, fps_limit = 60u;
+	if(!window.initialize_fullscreen(WINDOW_NAME, width, height, fps_limit)) return 1;
+	camera = Camera(width, height, fps_limit);
+	window.set_cursor_visible(false);
+	window.set_cursor_pos(width/2.0, height/2.0);
+
+	GLRenderer renderer;
+	if(!renderer.initialize(width, height)) return 1;
+
+	window.set_callbacks({
+		[&](int key, bool pressed) {
+			const int k = key_glfw_to_internal(key);
+			if(k==0) return;
+			camera.set_key_state(k, pressed);
+			if(pressed) key_bindings(k);
+		},
+		[&](double x, double y) {
+			camera.input_mouse_moved((int)x, (int)y);
+			if(!camera.lockmouse) window.set_cursor_pos(width/2.0, height/2.0);
+		},
+		[&](double xoffset, double yoffset) {
+			if(yoffset>0.0) camera.input_scroll_up();
+			if(yoffset<0.0) camera.input_scroll_down();
+		},
+		[&](int button, bool pressed) {
+			if(pressed) {
+				camera.input_key('U');
+				window.set_cursor_visible(!camera.lockmouse);
+				if(camera.lockmouse) window.set_cursor_pos(width/2.0, height/2.0);
+			}
+		}
+	});
+
+	thread compute_thread(main_physics); // start main_physics() in a new thread
+	Clock clock;
+	double frametime = 1.0;
+	while(running && !window.should_close()) {
+		camera.rendring_frame.lock(); // block rendering for other threads until finished
+		camera.update_state(fmax(1.0/(double)camera.fps_limit, frametime));
+		main_graphics();
+		main_label(frametime);
+		renderer.upload_frame(camera.bitmap, camera.width, camera.height);
+		renderer.render();
+		window.swap();
+		camera.rendring_frame.unlock();
+		window.poll();
+		frametime = clock.stop();
+		sleep(1.0/(double)camera.fps_limit-frametime);
+		clock.start();
+	}
+
+	running = false;
+	compute_thread.join();
+	renderer.shutdown();
+	window.shutdown();
+	return 0;
+}
+
+#elif defined(INTERACTIVE_GRAPHICS)
 #if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
@@ -800,7 +888,7 @@ int main(int argc, char* argv[]) {
 
 #endif // INTERACTIVE_GRAPHICS_ASCII
 
-#if !defined(INTERACTIVE_GRAPHICS) && !defined(INTERACTIVE_GRAPHICS_ASCII)
+#if !defined(INTERACTIVE_GRAPHICS) && !defined(INTERACTIVE_GRAPHICS_ASCII) && !defined(INTERACTIVE_GRAPHICS_GLFW)
 
 int main(int argc, char* argv[]) {
 	main_arguments = get_main_arguments(argc, argv);

@@ -30,7 +30,7 @@
 // ============================================================================
 // Graphics
 // ============================================================================
-#define INTERACTIVE_GRAPHICS  // Enable interactive graphics window
+#define INTERACTIVE_GRAPHICS_GLFW  // Enable interactive graphics window (GLFW + GLAD)
 
 // ============================================================================
 // Output
@@ -79,7 +79,7 @@
 #define UPDATE_FIELDS
 #endif
 
-#if defined(INTERACTIVE_GRAPHICS) || defined(INTERACTIVE_GRAPHICS_ASCII)
+#if defined(INTERACTIVE_GRAPHICS) || defined(INTERACTIVE_GRAPHICS_ASCII) || defined(INTERACTIVE_GRAPHICS_GLFW)
 #define GRAPHICS
 #define UPDATE_FIELDS
 #endif

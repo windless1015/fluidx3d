@@ -52,6 +52,16 @@ set(RENDER_HEADERS
     src/render/lodepng.hpp
 )
 
+# OpenGL (GLFW + GLAD) rendering
+set(RENDER_GL_SOURCES
+    src/render_gl/gl_renderer.cpp
+    src/render_gl/glfw_window.cpp
+)
+set(RENDER_GL_HEADERS
+    src/render_gl/gl_renderer.hpp
+    src/render_gl/glfw_window.hpp
+)
+
 # App 模块
 set(APP_SOURCES
     src/app/main.cpp
@@ -68,6 +78,7 @@ set(APP_HEADERS
 set(ALL_SOURCES
     ${LBM_SOURCES}
     ${RENDER_SOURCES}
+    ${RENDER_GL_SOURCES}
     ${APP_SOURCES}
 )
 
@@ -75,6 +86,7 @@ set(ALL_HEADERS
     ${CORE_HEADERS}
     ${LBM_HEADERS}
     ${RENDER_HEADERS}
+    ${RENDER_GL_HEADERS}
     ${APP_HEADERS}
 )
 
@@ -84,11 +96,29 @@ set(ALL_HEADERS
 add_executable(${PROJECT_NAME} ${ALL_SOURCES} ${ALL_HEADERS})
 
 # ============================================================================
+# GLFW + GLAD (OpenGL)
+# ============================================================================
+include(FetchContent)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG 3.3.8
+)
+FetchContent_MakeAvailable(glfw)
+add_library(glad STATIC third_party/glad/src/glad.c)
+target_include_directories(glad PUBLIC third_party/glad/include)
+
+# ============================================================================
 # Visual Studio 文件夹结构 (与磁盘目录一致)
 # ============================================================================
 source_group("core" FILES ${CORE_HEADERS})
 source_group("lbm" FILES ${LBM_SOURCES} ${LBM_HEADERS})
 source_group("render" FILES ${RENDER_SOURCES} ${RENDER_HEADERS})
+source_group("render_gl" FILES ${RENDER_GL_SOURCES} ${RENDER_GL_HEADERS})
 source_group("app" FILES ${APP_SOURCES} ${APP_HEADERS})
 
 # ============================================================================
@@ -99,6 +129,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/src/core
     ${CMAKE_SOURCE_DIR}/src/lbm
     ${CMAKE_SOURCE_DIR}/src/render
+    ${CMAKE_SOURCE_DIR}/src/render_gl
     ${CMAKE_SOURCE_DIR}/src/app
     ${CMAKE_SOURCE_DIR}/src/OpenCL/include
 )
@@ -112,7 +143,13 @@ target_link_directories(${PROJECT_NAME} PRIVATE
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     OpenCL
+    glfw
+    glad
 )
+
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE opengl32)
+endif()
 
 # ============================================================================
 # 编译选项 (针对 MSVC)
