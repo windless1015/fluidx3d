@@ -811,29 +811,54 @@ void LBM::initialize() { // write all data fields to device and call kernel_init
 	initialized = true;
 }
 
-void LBM::do_time_step() { // call kernel_stream_collide to perform one LBM time step
-#ifdef SURFACE
-	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_0();
-#endif // SURFACE
+void LBM::step_stream_collide() {
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_stream_collide(); // run LBM stream_collide kernel after domain communication
+}
+void LBM::step_exchange_rho_u_flags() {
 #if defined(SURFACE) || defined(GRAPHICS)
 	communicate_rho_u_flags(); // rho/u/flags halo data is required for SURFACE extension, and u halo data is required for Q-criterion rendering
 #endif // SURFACE || GRAPHICS
+}
 #ifdef SURFACE
+void LBM::step_surface_capture_outgoing() {
+	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_0();
+}
+void LBM::step_surface_topology_update() {
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_1();
 	communicate_flags();
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_2();
 	communicate_flags();
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_surface_3();
 	communicate_phi_massex_flags();
+}
 #endif // SURFACE
+void LBM::step_exchange_fi() {
 	communicate_fi();
-
+}
 #ifdef PARTICLES
+void LBM::step_integrate_particles() {
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->enqueue_integrate_particles(); // intgegrate particles forward in time and couple particles to fluid
+}
 #endif // PARTICLES
+void LBM::step_finalize_time_step() {
 	if(get_D()==1u) for(uint d=0u; d<get_D(); d++) lbm_domain[d]->finish_queue(); // this additional domain synchronization barrier is only required in single-GPU, as communication calls already provide all necessary synchronization barriers in multi-GPU
 	for(uint d=0u; d<get_D(); d++) lbm_domain[d]->increment_time_step();
+}
+
+void LBM::do_time_step() { // call kernel_stream_collide to perform one LBM time step
+#ifdef SURFACE
+	step_surface_capture_outgoing();
+#endif // SURFACE
+	step_stream_collide();
+	step_exchange_rho_u_flags();
+#ifdef SURFACE
+	step_surface_topology_update();
+#endif // SURFACE
+	step_exchange_fi();
+#ifdef PARTICLES
+	step_integrate_particles();
+#endif // PARTICLES
+	step_finalize_time_step();
 }
 
 void LBM::run(const ulong steps, const ulong total_steps) { // initializes the LBM simulation (copies data to device and runs initialize kernel), then runs LBM

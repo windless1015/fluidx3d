@@ -231,6 +231,17 @@ private:
 	void sanity_checks_initialization(); // sanity checks during initialization on used extensions based on used flags
 	void initialize(); // write all data fields to device and call kernel_initialize
 	void do_time_step(); // call kernel_stream_collide to perform one LBM time step
+	void step_stream_collide();
+	void step_exchange_rho_u_flags();
+#ifdef SURFACE
+	void step_surface_capture_outgoing();
+	void step_surface_topology_update();
+#endif // SURFACE
+	void step_exchange_fi();
+#ifdef PARTICLES
+	void step_integrate_particles();
+#endif // PARTICLES
+	void step_finalize_time_step();
 
 	void communicate_field(const enum_transfer_field field, const uint bytes_per_cell);
 

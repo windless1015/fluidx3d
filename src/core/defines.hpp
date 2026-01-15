@@ -32,6 +32,11 @@
 // ============================================================================
 #define INTERACTIVE_GRAPHICS  // Enable interactive graphics window
 
+// ============================================================================
+// Output
+// ============================================================================
+#define ENABLE_VTK_OUTPUT 0  // 1 = write VTK files, 0 = disable VTK output
+
 #define GRAPHICS_FRAME_WIDTH 1920
 #define GRAPHICS_FRAME_HEIGHT 1080
 #define GRAPHICS_BACKGROUND_COLOR 0x000000
