@@ -76,6 +76,7 @@ set(APP_SOURCES
     src/app/setup.cpp
     src/app/scenes/dam_break.cpp
     src/app/runtime/sim_loop.cpp
+    src/app/runtime/sim_modules.cpp
 )
 set(APP_HEADERS
     src/app/info.hpp
@@ -83,6 +84,7 @@ set(APP_HEADERS
     src/app/setup.hpp
     src/app/scenes/dam_break.hpp
     src/app/runtime/sim_loop.hpp
+    src/app/runtime/sim_modules.hpp
     src/lbm_api/LBMConfig.h
     src/lbm_api/LBMCore.h
     src/lbm_api/FreeSurfaceModule.h

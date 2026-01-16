@@ -9,6 +9,7 @@
 #include "app_graphics.hpp"
 #include "scenes/dam_break.hpp"
 #include "runtime/sim_loop.hpp"
+#include "runtime/sim_modules.hpp"
 #include <atomic>
 #include <thread>
 
@@ -60,9 +61,13 @@ void main_setup() {
 	// ============================================================================
 	SimLoopParams loop_params;
 	loop_params.log_interval = 1u;
+	std::vector<std::unique_ptr<ISimModule>> modules;
+	modules.emplace_back(std::make_unique<MassMonitorModule>());
 #if ENABLE_VTK_OUTPUT
-	loop_params.enable_vtk = true;
-	loop_params.vtk_interval = 100u;
+	VTKModuleParams vtk_params;
+	vtk_params.enabled = true;
+	vtk_params.interval = 100u;
+	modules.emplace_back(std::make_unique<VTKModule>(vtk_params));
 #endif
-	run_simulation(model, loop_params);
+	run_simulation(model, loop_params, std::move(modules));
 }

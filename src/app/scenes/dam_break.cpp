@@ -12,34 +12,30 @@ void setup_dam_break(lbm::LBMModel& model, const DamBreakParams& params) {
 	model.configure(cfg);
 	model.enableFreeSurface(true);
 
-	LBM* lbm = model.core()->internal_lbm();
-	if(lbm == nullptr) return;
+	lbm::LBMCore* core = model.core();
+	if(core == nullptr) return;
 
 #ifdef GRAPHICS
-	app_graphics = new LBM_Graphics(lbm);
-	app_graphics->visualization_modes = lbm->get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
+	app_graphics = new LBM_Graphics(core->internal_lbm());
+	app_graphics->visualization_modes = core->internal_lbm()->get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
 #endif // GRAPHICS
 
-	const uint Nx = lbm->get_Nx();
-	const uint Ny = lbm->get_Ny();
-	const uint Nz = lbm->get_Nz();
+	const uint Nx = core->get_Nx();
+	const uint Ny = core->get_Ny();
+	const uint Nz = core->get_Nz();
 	const uint water_z = Nz*params.water_z_num/params.water_z_den;
 	const uint water_y = Ny*params.water_y_num/params.water_y_den;
 
-	parallel_for(lbm->get_N(), [&](ulong n) {
-		uint x = 0u, y = 0u, z = 0u;
-		lbm->coordinates(n, x, y, z);
+	core->for_each_cell([&](ulong n, uint x, uint y, uint z) {
 
 		if(z < water_z && y < water_y) {
-			lbm->flags[n] = TYPE_F;  // Fluid cell
-			lbm->phi[n] = 1.0f;      // Fill level = full
+			core->set_flag_phi(n, TYPE_F, 1.0f);  // Fluid cell
 		} else {
-			lbm->flags[n] = TYPE_G;  // Gas cell
-			lbm->phi[n] = 0.0f;      // Fill level = empty
+			core->set_flag_phi(n, TYPE_G, 0.0f);  // Gas cell
 		}
 
 		if(x == 0u || x == Nx - 1u || y == 0u || y == Ny - 1u || z == 0u || z == Nz - 1u) {
-			lbm->flags[n] = TYPE_S;
+			core->set_flag(n, TYPE_S);
 		}
 	});
 }

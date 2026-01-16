@@ -3,6 +3,7 @@
 #include "LBMConfig.h"
 #include "../lbm/lbm.hpp"
 #include <cstdint>
+#include <functional>
 
 namespace lbm {
 
@@ -80,6 +81,62 @@ public:
 	int ny() const { return config_.ny; }
 	int nz() const { return config_.nz; }
 	int nCells() const { return nCells_; }
+
+	ulong nCellsU() const { return lbm_ ? lbm_->get_N() : 0ull; }
+	uint get_Nx() const { return lbm_ ? lbm_->get_Nx() : 0u; }
+	uint get_Ny() const { return lbm_ ? lbm_->get_Ny() : 0u; }
+	uint get_Nz() const { return lbm_ ? lbm_->get_Nz() : 0u; }
+	ulong get_t() const { return lbm_ ? lbm_->get_t() : 0ull; }
+
+	void coordinates(const ulong n, uint& x, uint& y, uint& z) const {
+		if(lbm_ != nullptr) lbm_->coordinates(n, x, y, z);
+	}
+
+	void set_flag(const ulong n, const uchar flag) {
+		if(lbm_ != nullptr) lbm_->flags[n] = flag;
+	}
+
+	void set_phi(const ulong n, const float phi) {
+#ifdef SURFACE
+		if(lbm_ != nullptr) lbm_->phi[n] = phi;
+#else
+		(void)n; (void)phi;
+#endif
+	}
+
+	void set_flag_phi(const ulong n, const uchar flag, const float phi) {
+		if(lbm_ != nullptr) {
+			lbm_->flags[n] = flag;
+#ifdef SURFACE
+			lbm_->phi[n] = phi;
+#else
+			(void)phi;
+#endif
+		}
+	}
+
+	void for_each_cell(const std::function<void(ulong, uint, uint, uint)>& fn) const {
+		if(lbm_ == nullptr) return;
+		const ulong N = lbm_->get_N();
+		parallel_for(N, [&](ulong n) {
+			uint x = 0u, y = 0u, z = 0u;
+			lbm_->coordinates(n, x, y, z);
+			fn(n, x, y, z);
+		});
+	}
+
+	double compute_total_mass() const {
+#ifdef SURFACE
+		if(lbm_ == nullptr) return 0.0;
+		return (double)lbm_->lbm_domain[0]->compute_total_mass();
+#else
+		return 0.0;
+#endif
+	}
+
+	void write_vtk(const string& path) {
+		if(lbm_ != nullptr) lbm_->write_vtk(path);
+	}
 
 private:
 	LBMConfig config_;
