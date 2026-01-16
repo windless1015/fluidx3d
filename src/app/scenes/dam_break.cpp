@@ -1,6 +1,4 @@
 #include "dam_break.hpp"
-#include "../app_graphics.hpp"
-
 void setup_dam_break(lbm::LBMModel& model, const DamBreakParams& params) {
 	lbm::LBMConfig cfg;
 	cfg.nx = (int)params.nx;
@@ -14,11 +12,6 @@ void setup_dam_break(lbm::LBMModel& model, const DamBreakParams& params) {
 
 	lbm::LBMCore* core = model.core();
 	if(core == nullptr) return;
-
-#ifdef GRAPHICS
-	app_graphics = new LBM_Graphics(core->internal_lbm());
-	app_graphics->visualization_modes = core->internal_lbm()->get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
-#endif // GRAPHICS
 
 	const uint Nx = core->get_Nx();
 	const uint Ny = core->get_Ny();

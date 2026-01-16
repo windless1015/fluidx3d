@@ -30,25 +30,15 @@ set(CORE_HEADERS
     src/core/IVelocityFieldProvider.h
     src/core/ICollisionGeometry.h
     src/core/ModelRegistry.h
-    src/core/opencl.hpp
     src/core/units.hpp
     src/core/utilities.hpp
 )
 
 # LBM 模块
 set(LBM_SOURCES
-    src/lbm/lbm.cpp
-    src/lbm/lbm_graphics.cpp
-    src/lbm/kernel.cpp
-    src/lbm/shapes.cpp
     src/cuda/lbm_cuda.cu
 )
 set(LBM_HEADERS
-    src/lbm/lbm.hpp
-    src/lbm/lbm_graphics.hpp
-    src/lbm/lbm_interface.hpp
-    src/lbm/kernel.hpp
-    src/lbm/shapes.hpp
     src/cuda/lbm_cuda.hpp
     src/cuda/cuda_utils.hpp
 )
@@ -86,7 +76,6 @@ set(APP_SOURCES
 )
 set(APP_HEADERS
     src/app/info.hpp
-    src/app/app_graphics.hpp
     src/app/setup.hpp
     src/app/scenes/dam_break.hpp
     src/app/runtime/sim_loop.hpp
@@ -100,6 +89,7 @@ set(APP_HEADERS
 # 合并所有源文件
 set(ALL_SOURCES
     src/core/ModelRegistry.cpp
+    src/core/units.cpp
     ${LBM_SOURCES}
     ${RENDER_SOURCES}
     ${RENDER_GL_SOURCES}
@@ -151,23 +141,17 @@ source_group("app" FILES ${APP_SOURCES} ${APP_HEADERS})
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/core
-    ${CMAKE_SOURCE_DIR}/src/lbm
     ${CMAKE_SOURCE_DIR}/src/render
     ${CMAKE_SOURCE_DIR}/src/render_gl
     ${CMAKE_SOURCE_DIR}/src/app
     ${CMAKE_SOURCE_DIR}/src/cuda
-    ${CMAKE_SOURCE_DIR}/src/OpenCL/include
 )
 
 # ============================================================================
 # OpenCL 库链接
 # ============================================================================
-target_link_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/OpenCL/lib
-)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    OpenCL
     glfw
     glad
 )

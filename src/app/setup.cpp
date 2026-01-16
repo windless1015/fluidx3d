@@ -6,12 +6,10 @@
  */
 
 #include "setup.hpp"
-#include "app_graphics.hpp"
 #include "scenes/dam_break.hpp"
 #include "runtime/sim_loop.hpp"
 #include "runtime/sim_modules.hpp"
-#include <atomic>
-#include <thread>
+#include "app_model.hpp"
 
 void main_setup() {
 	// ============================================================================
@@ -24,37 +22,7 @@ void main_setup() {
 	lbm::LBMModel model;
 	DamBreakParams params;
 	setup_dam_break(model, params);
-	LBM* lbm = model.core()->internal_lbm();
-
-#ifdef GRAPHICS
-	app_graphics = new LBM_Graphics(lbm);
-	app_graphics->visualization_modes = lbm->get_D() == 1u ? VIS_PHI_RAYTRACE : VIS_PHI_RASTERIZE;
-#endif // GRAPHICS
-
-	// ============================================================================
-	// Geometry Setup - Dam Break Initial Condition
-	// ============================================================================
-	const uint Nx = lbm->get_Nx(), Ny = lbm->get_Ny(), Nz = lbm->get_Nz();
-	
-	parallel_for(lbm->get_N(), [&](ulong n) {
-		uint x = 0u, y = 0u, z = 0u;
-		lbm->coordinates(n, x, y, z);
-
-		// Water column: z < 6/8 * Nz and y < Ny/8
-		if (z < Nz * 6u / 8u && y < Ny / 8u) {
-			lbm->flags[n] = TYPE_F;  // Fluid cell
-			lbm->phi[n] = 1.0f;      // Fill level = full
-		}
-		else {
-			lbm->flags[n] = TYPE_G;  // Gas cell
-			lbm->phi[n] = 0.0f;      // Fill level = empty
-		}
-
-		// Solid walls on all boundaries (non-periodic)
-		if (x == 0u || x == Nx - 1u || y == 0u || y == Ny - 1u || z == 0u || z == Nz - 1u) {
-			lbm->flags[n] = TYPE_S;
-		}
-	});
+	app_core = model.core();
 
 	// ============================================================================
 	// Run Simulation with Mass Conservation Logging

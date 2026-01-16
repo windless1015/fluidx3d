@@ -3,7 +3,7 @@
 #include "../render_gl/glfw_window.hpp"
 #include "../render_gl/gl_raytrace.hpp"
 #include "../app/info.hpp"
-#include "../lbm/lbm.hpp"
+#include "../app/app_model.hpp"
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #endif // INTERACTIVE_GRAPHICS_GLFW
@@ -526,16 +526,13 @@ int main(int argc, char* argv[]) {
 	while(running && !window.should_close()) {
 		camera.rendring_frame.lock(); // block rendering for other threads until finished
 		camera.update_state(fmax(1.0/(double)camera.fps_limit, frametime));
-		if(info.lbm != nullptr) {
+		if(app_core != nullptr) {
 #ifdef SURFACE
-			const uint nx = info.lbm->get_Nx();
-			const uint ny = info.lbm->get_Ny();
-			const uint nz = info.lbm->get_Nz();
-#ifdef USE_CUDA_LBM
-			info.lbm->lbm_domain[0]->sync_cuda_to_opencl_render();
-#endif // USE_CUDA_LBM
-			info.lbm->lbm_domain[0]->phi.read_from_device();
-			const float* phi = info.lbm->lbm_domain[0]->phi.data();
+			const uint nx = app_core->get_Nx();
+			const uint ny = app_core->get_Ny();
+			const uint nz = app_core->get_Nz();
+			app_core->sync_host_fields();
+			const float* phi = app_core->phi_host();
 			renderer.update_volume(phi, nx, ny, nz);
 			const float3 box_min = float3(-0.5f*(float)nx+0.5f, -0.5f*(float)ny+0.5f, -0.5f*(float)nz+0.5f);
 			const float3 box_max = float3( 0.5f*(float)nx-0.5f,  0.5f*(float)ny-0.5f,  0.5f*(float)nz-0.5f);

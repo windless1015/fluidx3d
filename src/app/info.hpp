@@ -1,11 +1,11 @@
 #pragma once
 
 #include "../core/utilities.hpp"
+#include "../lbm_api/LBMModel.h"
 #include <mutex>
 
-class LBM;
 struct Info { // contains redundant information for console printing
-	LBM* lbm = nullptr;
+	lbm::LBMCore* core = nullptr;
 	double runtime_lbm=0.0, runtime_total=0.0f, runtime_total_last=0.0; // lbm (compute) and total (compute + rendering + data evaluation) runtime
 	double runtime_lbm_timestep_last=1.0, runtime_lbm_timestep_smooth=1.0; // for printing simulation info
 	Clock clock; // for measuring total runtime
@@ -17,7 +17,7 @@ struct Info { // contains redundant information for console printing
 	void update(const double dt);
 	double time() const; // returns either elapsed time or remaining time
 	void print_logo() const;
-	void print_initialize(LBM* lbm); // enables interactive rendering
+	void print_initialize(lbm::LBMCore* core); // enables interactive rendering
 	void print_update() const;
 	void print_finalize(); // disables interactive rendering
 };
