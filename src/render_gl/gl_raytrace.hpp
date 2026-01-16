@@ -15,11 +15,16 @@ private:
 	unsigned int vao = 0u;
 	unsigned int vbo = 0u;
 	unsigned int volume_tex = 0u;
+	unsigned int skybox_tex = 0u;
+	unsigned int skybox_w = 0u;
+	unsigned int skybox_h = 0u;
 	unsigned int vol_nx = 0u;
 	unsigned int vol_ny = 0u;
 	unsigned int vol_nz = 0u;
 	std::vector<float> volume;
+	std::vector<unsigned char> skybox_rgba;
 	bool create_program();
 	void create_quad();
 	void create_volume_tex(const unsigned int nx, const unsigned int ny, const unsigned int nz);
+	bool load_skybox();
 };

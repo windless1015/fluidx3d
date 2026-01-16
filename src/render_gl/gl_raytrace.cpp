@@ -43,6 +43,8 @@ bool GLRaytraceRenderer::create_program() {
 		"uniform float uOpacity;\n"
 		"uniform vec3 uLightDir;\n"
 		"uniform vec3 uBgColor;\n"
+		"uniform sampler2D uSkybox;\n"
+		"uniform int uUseSkybox;\n"
 		"uniform int uSteps;\n"
 		"vec2 intersect_box(vec3 ro, vec3 rd, vec3 bmin, vec3 bmax) {\n"
 		"    vec3 inv = 1.0 / rd;\n"
@@ -62,35 +64,48 @@ bool GLRaytraceRenderer::create_program() {
 		"    float dz = texture(uPhi, uv + vec3(0.0, 0.0, e.z)).r - texture(uPhi, uv - vec3(0.0, 0.0, e.z)).r;\n"
 		"    return normalize(vec3(dx, dy, dz));\n"
 		"}\n"
+		"vec3 sky_color(vec3 dir) {\n"
+		"    if(uUseSkybox == 0) return uBgColor;\n"
+		"    vec3 d = normalize(dir);\n"
+		"    float u = atan(d.x, d.y) * 0.15915494 + 0.5;\n"
+		"    float v = asin(clamp(d.z, -1.0, 1.0)) * -0.31830989 + 0.5;\n"
+		"    return texture(uSkybox, vec2(u, v)).rgb;\n"
+		"}\n"
 		"void main() {\n"
 		"    vec2 ndc = vUV * 2.0 - 1.0;\n"
 		"    float aspect = uViewport.x / uViewport.y;\n"
 		"    float tanf = tan(radians(uFov) * 0.5);\n"
 		"    vec3 dir = normalize(uCamR * vec3(ndc.x * aspect * tanf, -ndc.y * tanf, -1.0));\n"
 		"    vec2 hit = intersect_box(uCamPos, dir, uBoxMin, uBoxMax);\n"
-		"    if(hit.x > hit.y) { FragColor = vec4(uBgColor, 1.0); return; }\n"
+		"    vec3 bg = sky_color(dir);\n"
+		"    if(hit.x > hit.y) { FragColor = vec4(bg, 1.0); return; }\n"
 		"    float t0 = max(hit.x, 0.0);\n"
 		"    float t1 = hit.y;\n"
 		"    float dt = (t1 - t0) / float(uSteps);\n"
 		"    float t = t0;\n"
-		"    float last_phi = 0.0;\n"
-		"    bool hit_surface = false;\n"
+		"    vec3 p0 = uCamPos + dir * t0;\n"
+		"    float last_phi = texture(uPhi, (p0 - uBoxMin) / (uBoxMax - uBoxMin)).r;\n"
+		"    float entry_t = -1.0;\n"
+		"    float exit_t = -1.0;\n"
 		"    vec3 hit_pos = vec3(0.0);\n"
 		"    vec3 hit_normal = vec3(0.0);\n"
 		"    for(int i=0; i<uSteps; i++) {\n"
+		"        t += dt;\n"
 		"        vec3 p = uCamPos + dir * t;\n"
 		"        vec3 uv = (p - uBoxMin) / (uBoxMax - uBoxMin);\n"
 		"        float phi = texture(uPhi, uv).r;\n"
-		"        if(phi >= uIso && last_phi < uIso) {\n"
-		"            hit_surface = true;\n"
+		"        if(entry_t < 0.0 && phi >= uIso && last_phi < uIso) {\n"
+		"            entry_t = t;\n"
 		"            hit_pos = p;\n"
 		"            hit_normal = calc_normal(p, uBoxMin, uBoxMax);\n"
+		"        } else if(entry_t >= 0.0 && phi < uIso && last_phi >= uIso) {\n"
+		"            exit_t = t;\n"
 		"            break;\n"
 		"        }\n"
 		"        last_phi = phi;\n"
-		"        t += dt;\n"
 		"    }\n"
-		"    if(!hit_surface) { FragColor = vec4(uBgColor, 1.0); return; }\n"
+		"    if(entry_t < 0.0) { FragColor = vec4(bg, 1.0); return; }\n"
+		"    if(exit_t < 0.0) exit_t = t1;\n"
 		"    vec3 n = normalize(hit_normal);\n"
 		"    float cosi = clamp(dot(-dir, n), 0.0, 1.0);\n"
 		"    float n1 = 1.0;\n"
@@ -98,15 +113,15 @@ bool GLRaytraceRenderer::create_program() {
 		"    float f0 = (n1 - n2) / (n1 + n2);\n"
 		"    f0 = f0 * f0;\n"
 		"    float fresnel = f0 + (1.0 - f0) * pow(1.0 - cosi, 5.0);\n"
-		"    float thickness = max(t1 - t0, 0.0);\n"
+		"    float thickness = max(exit_t - entry_t, 0.0);\n"
 		"    float trans = exp(uAtten * thickness);\n"
-		"    vec3 light_dir = normalize(uLightDir);\n"
-		"    float diff = clamp(dot(n, light_dir), 0.0, 1.0);\n"
-		"    vec3 refract_col = mix(vec3(0.02, 0.07, 0.12), uAbsorbColor, diff);\n"
-		"    vec3 reflect_col = vec3(0.9) * pow(diff + 0.25, 2.0);\n"
-		"    vec3 water_col = mix(refract_col, reflect_col, fresnel);\n"
-		"    vec3 col = mix(uBgColor, water_col, 1.0 - trans);\n"
-		"    col = mix(uBgColor, col, uOpacity);\n"
+		"    vec3 refl_dir = reflect(dir, n);\n"
+		"    vec3 refr_dir = refract(dir, n, n1 / n2);\n"
+		"    vec3 reflect_col = sky_color(refl_dir);\n"
+		"    vec3 refract_col = (length(refr_dir) < 1e-4) ? reflect_col : sky_color(refr_dir);\n"
+		"    vec3 transmit_col = mix(uAbsorbColor, refract_col, trans);\n"
+		"    vec3 water_col = mix(transmit_col, reflect_col, fresnel);\n"
+		"    vec3 col = mix(bg, water_col, uOpacity);\n"
 		"    FragColor = vec4(col, 1.0);\n"
 		"}\n";
 
@@ -170,9 +185,11 @@ void GLRaytraceRenderer::create_volume_tex(const unsigned int nx, const unsigned
 bool GLRaytraceRenderer::initialize(const unsigned int width, const unsigned int height) {
 	if(!create_program()) return false;
 	create_quad();
+	load_skybox();
 	glDisable(GL_DEPTH_TEST);
 	glUseProgram(program);
 	glUniform1i(glGetUniformLocation(program, "uPhi"), 0);
+	glUniform1i(glGetUniformLocation(program, "uSkybox"), 1);
 	glUseProgram(0);
 	return true;
 }
@@ -195,6 +212,37 @@ void GLRaytraceRenderer::update_volume(const float* phi, const unsigned int nx, 
 	glBindTexture(GL_TEXTURE_3D, 0);
 }
 
+bool GLRaytraceRenderer::load_skybox() {
+	const string path_skybox = get_exe_path()+"../skybox/skybox8k.png";
+	Image* skybox_image = read_png(path_skybox);
+	if(skybox_image == nullptr) {
+		print_info("Skybox image not found at \""+path_skybox+"\"; using solid background.");
+		return false;
+	}
+	skybox_w = skybox_image->width();
+	skybox_h = skybox_image->height();
+	skybox_rgba.resize((size_t)skybox_w*(size_t)skybox_h*4ull);
+	const int* src = skybox_image->data();
+	for(size_t i = 0; i < (size_t)skybox_w*(size_t)skybox_h; i++) {
+		const int c = src[i];
+		skybox_rgba[i*4+0] = (unsigned char)((c>>16)&0xFF);
+		skybox_rgba[i*4+1] = (unsigned char)((c>>8)&0xFF);
+		skybox_rgba[i*4+2] = (unsigned char)(c&0xFF);
+		skybox_rgba[i*4+3] = 255u;
+	}
+	delete skybox_image;
+	if(skybox_tex == 0u) glGenTextures(1, &skybox_tex);
+	glBindTexture(GL_TEXTURE_2D, skybox_tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (int)skybox_w, (int)skybox_h, 0, GL_RGBA, GL_UNSIGNED_BYTE, skybox_rgba.data());
+	glBindTexture(GL_TEXTURE_2D, 0);
+	return true;
+}
+
 void GLRaytraceRenderer::render(const float3& cam_pos, const float3x3& cam_R, const float fov_deg, const float3& box_min, const float3& box_max, const unsigned int width, const unsigned int height) {
 	glViewport(0, 0, (int)width, (int)height);
 	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -202,6 +250,8 @@ void GLRaytraceRenderer::render(const float3& cam_pos, const float3x3& cam_R, co
 	glUseProgram(program);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_3D, volume_tex);
+	glActiveTexture(GL_TEXTURE0+1);
+	glBindTexture(GL_TEXTURE_2D, skybox_tex);
 	glUniform3f(glGetUniformLocation(program, "uCamPos"), cam_pos.x, cam_pos.y, cam_pos.z);
 	glUniformMatrix3fv(glGetUniformLocation(program, "uCamR"), 1, GL_TRUE, &cam_R.xx);
 	glUniform1f(glGetUniformLocation(program, "uFov"), fov_deg);
@@ -219,14 +269,16 @@ void GLRaytraceRenderer::render(const float3& cam_pos, const float3x3& cam_R, co
 	glUniform3f(glGetUniformLocation(program, "uAbsorbColor"), ab_r, ab_g, ab_b);
 	glUniform1f(glGetUniformLocation(program, "uAtten"), atten);
 	glUniform1f(glGetUniformLocation(program, "uIso"), 0.5f);
-	glUniform1f(glGetUniformLocation(program, "uOpacity"), 0.85f);
+	glUniform1f(glGetUniformLocation(program, "uOpacity"), 1.0f);
 	glUniform3f(glGetUniformLocation(program, "uLightDir"), 0.3f, 0.7f, 0.6f);
 	glUniform3f(glGetUniformLocation(program, "uBgColor"), bg_r, bg_g, bg_b);
+	glUniform1i(glGetUniformLocation(program, "uUseSkybox"), skybox_tex != 0u ? 1 : 0);
 	glUniform1i(glGetUniformLocation(program, "uSteps"), 512);
 	glBindVertexArray(vao);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_3D, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 	glUseProgram(0);
 }
 
@@ -234,9 +286,11 @@ void GLRaytraceRenderer::shutdown() {
 	if(vbo != 0u) glDeleteBuffers(1, &vbo);
 	if(vao != 0u) glDeleteVertexArrays(1, &vao);
 	if(volume_tex != 0u) glDeleteTextures(1, &volume_tex);
+	if(skybox_tex != 0u) glDeleteTextures(1, &skybox_tex);
 	if(program != 0u) glDeleteProgram(program);
 	vbo = 0u;
 	vao = 0u;
 	volume_tex = 0u;
+	skybox_tex = 0u;
 	program = 0u;
 }

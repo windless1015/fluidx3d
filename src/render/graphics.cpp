@@ -470,12 +470,17 @@ int main(int argc, char* argv[]) {
 	uint width = 0u, height = 0u, fps_limit = 60u;
 	if(!window.initialize_fullscreen(WINDOW_NAME, width, height, fps_limit)) return 1;
 	camera = Camera(width, height, fps_limit);
-	window.set_cursor_visible(false);
+	window.set_cursor_visible(camera.lockmouse);
 	window.set_cursor_pos(width/2.0, height/2.0);
 
 	GLRaytraceRenderer renderer;
 	if(!renderer.initialize(width, height)) return 1;
 
+	static double last_mouse_x = 0.0;
+	static double last_mouse_y = 0.0;
+	static bool have_last_mouse = false;
+	static bool mouse_left_down = false;
+	static bool mouse_right_down = false;
 	window.set_callbacks({
 		[&](int key, bool pressed) {
 			const int k = key_glfw_to_internal(key);
@@ -484,18 +489,33 @@ int main(int argc, char* argv[]) {
 			if(pressed) key_bindings(k);
 		},
 		[&](double x, double y) {
-			camera.input_mouse_moved((int)x, (int)y);
-			if(!camera.lockmouse) window.set_cursor_pos(width/2.0, height/2.0);
+			if(!have_last_mouse) {
+				last_mouse_x = x;
+				last_mouse_y = y;
+				have_last_mouse = true;
+				return;
+			}
+			const int dx = (int)(x - last_mouse_x);
+			const int dy = (int)(y - last_mouse_y);
+			last_mouse_x = x;
+			last_mouse_y = y;
+			if(!camera.lockmouse && mouse_left_down) {
+				camera.input_mouse_dragged(dx, dy);
+			} else if(!camera.lockmouse && mouse_right_down) {
+				camera.input_mouse_pan(dx, dy);
+			}
 		},
 		[&](double xoffset, double yoffset) {
 			if(yoffset>0.0) camera.input_scroll_up();
 			if(yoffset<0.0) camera.input_scroll_down();
 		},
 		[&](int button, bool pressed) {
-			if(pressed) {
-				camera.input_key('U');
-				window.set_cursor_visible(!camera.lockmouse);
-				if(camera.lockmouse) window.set_cursor_pos(width/2.0, height/2.0);
+			if(button == GLFW_MOUSE_BUTTON_LEFT) {
+				mouse_left_down = pressed;
+				if(pressed) have_last_mouse = false;
+			} else if(button == GLFW_MOUSE_BUTTON_RIGHT) {
+				mouse_right_down = pressed;
+				if(pressed) have_last_mouse = false;
 			}
 		}
 	});
@@ -511,6 +531,9 @@ int main(int argc, char* argv[]) {
 			const uint nx = info.lbm->get_Nx();
 			const uint ny = info.lbm->get_Ny();
 			const uint nz = info.lbm->get_Nz();
+#ifdef USE_CUDA_LBM
+			info.lbm->lbm_domain[0]->sync_cuda_to_opencl_render();
+#endif // USE_CUDA_LBM
 			info.lbm->lbm_domain[0]->phi.read_from_device();
 			const float* phi = info.lbm->lbm_domain[0]->phi.data();
 			renderer.update_volume(phi, nx, ny, nz);

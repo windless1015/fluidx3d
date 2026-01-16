@@ -43,6 +43,7 @@ public:
 
 private:
 	float log_zoom=4.0f*log(zoom), target_log_zoom=log_zoom;
+	float3 center = float3(0.0f);
 	double mouse_x=0.0, mouse_y=0.0, target_mouse_x=0.0, target_mouse_y=0.0; // mouse position
 	double mouse_sensitivity = 1.0; // mouse sensitivity
 	bool key_state[512] = { 0 };
@@ -55,6 +56,7 @@ public:
 		bitmap = new int[width*height];
 		zbuffer = new int[width*height];
 		set_zoom(1.0f); // set initial zoom
+		rebuild_rotation_from_angles();
 		update_matrix();
 	}
 	Camera() = default; // default constructor
@@ -69,6 +71,7 @@ public:
 		std::swap(bitmap, camera.bitmap);
 		std::swap(zbuffer, camera.zbuffer);
 		set_zoom(1.0f); // set initial zoom
+		rebuild_rotation_from_angles();
 		update_matrix();
 		return *this;
 	}
@@ -79,14 +82,10 @@ public:
 	}
 	void update_matrix() {
 		dis = 0.5f*(float)width/tan(fov*pif/360.0f);
-		const float sinrx=sin((float)rx), cosrx=cos((float)rx), sinry=sin((float)ry), cosry=cos((float)ry);
-		R.xx =  cosrx;       R.xy =  sinrx;       R.xz = 0.0f;
-		R.yx =  sinrx*sinry; R.yy = -cosrx*sinry; R.yz = cosry;
-		R.zx = -sinrx*cosry; R.zy =  cosrx*cosry; R.zz = sinry;
 		if(!free) {
-			pos.x = R.zx*dis/zoom;
-			pos.y = R.zy*dis/zoom;
-			pos.z = R.zz*dis/zoom;
+			pos.x = center.x + R.zx*dis/zoom;
+			pos.y = center.y + R.zy*dis/zoom;
+			pos.z = center.z + R.zz*dis/zoom;
 		}
 	}
 	void set_key_state(const int key, const bool state) {
@@ -172,9 +171,9 @@ public:
 		switch(i) {
 			case  0: return zoom   ; // camera zoom
 			case  1: return dis    ; // distance from camera to rotation center
-			case  2: return free ? pos.x : 0.0f; // camera position
-			case  3: return free ? pos.y : 0.0f;
-			case  4: return free ? pos.z : 0.0f;
+			case  2: return pos.x; // camera position
+			case  3: return pos.y;
+			case  4: return pos.z;
 			case  5: return R.xx; // camera rotation matrix
 			case  6: return R.xy;
 			case  7: return R.xz;
@@ -201,6 +200,17 @@ public:
 			target_mouse_y -= mouse_sensitivity*(double)(dy);
 		}
 	}
+	void input_mouse_pan(const int dx, const int dy) {
+		if(!lockmouse && !free) {
+			const float scale = (2.0f*dis/zoom)/(float)min(width, height);
+			const float right_x = R.xx, right_y = R.xy, right_z = R.xz;
+			const float up_x = R.yx, up_y = R.yy, up_z = R.yz;
+			center.x += (-right_x*(float)dx + up_x*(float)dy)*scale;
+			center.y += (-right_y*(float)dx + up_y*(float)dy)*scale;
+			center.z += (-right_z*(float)dx + up_z*(float)dy)*scale;
+			update_matrix();
+		}
+	}
 	void input_scroll_up() {
 		if(!free) { // zoom
 			target_log_zoom -= 1.0f;
@@ -223,10 +233,13 @@ private:
 		free = !free;
 		if(!free) {
 			zoom = exp(log_zoom*0.25f);
+			center.x = pos.x - R.zx*dis/zoom;
+			center.y = pos.y - R.zy*dis/zoom;
+			center.z = pos.z - R.zz*dis/zoom;
 		} else {
-			pos.x = R.zx*dis/zoom;
-			pos.y = R.zy*dis/zoom;
-			pos.z = R.zz*dis/zoom;
+			pos.x = center.x + R.zx*dis/zoom;
+			pos.y = center.y + R.zy*dis/zoom;
+			pos.z = center.z + R.zz*dis/zoom;
 			zoom = 1E16f;
 		}
 	}
@@ -322,15 +335,29 @@ private:
 	}
 
 	void update_rotation(const double arx, const double ary) {
-		rx += radians(arx);
-		ry += radians(ary);
-		rx = fmod(rx, 2.0*pi);
-		ry = clamp(ry, 0.5*pi, 1.5*pi);
+		const double arx_r = radians(arx);
+		const double new_ry = clamp(ry+radians(ary), 0.01*pi, 1.99*pi);
+		const double ary_r = new_ry-ry;
+		rx = fmod(rx+arx_r, 2.0*pi);
+		ry = new_ry;
+
+		const float3 right = float3(R.xx, R.xy, R.xz);
+		const float3 up = float3(R.yx, R.yy, R.yz);
+		const float3x3 rot_yaw = float3x3(up, (float)arx_r);
+		const float3x3 rot_pitch = float3x3(right, (float)ary_r);
+		R = rot_pitch*rot_yaw*R;
 		update_matrix();
 	}
 
 	double exp_decay(const double a, const double b, const double frametime, const double halflife=1.0) {
 		return b+(a-b)*exp2(-frametime/halflife);
+	}
+
+	void rebuild_rotation_from_angles() {
+		const float sinrx=sin((float)rx), cosrx=cos((float)rx), sinry=sin((float)ry), cosry=cos((float)ry);
+		R.xx =  cosrx;       R.xy =  sinrx;       R.xz = 0.0f;
+		R.yx =  sinrx*sinry; R.yy = -cosrx*sinry; R.yz = cosry;
+		R.zx = -sinrx*cosry; R.zy =  cosrx*cosry; R.zz = sinry;
 	}
 };
 

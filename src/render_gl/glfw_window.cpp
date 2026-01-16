@@ -99,6 +99,9 @@ void GlfwWindow::set_cursor_pos(const double x, const double y) {
 void GlfwWindow::set_cursor_visible(const bool visible) {
 	if(window==nullptr) return;
 	glfwSetInputMode(window, GLFW_CURSOR, visible ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_DISABLED);
+	if(glfwRawMouseMotionSupported()) {
+		glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, visible ? GLFW_FALSE : GLFW_TRUE);
+	}
 }
 
 void GlfwWindow::shutdown() {
