@@ -33,6 +33,11 @@
 #define INTERACTIVE_GRAPHICS_GLFW  // Enable interactive graphics window (GLFW + GLAD)
 
 // ============================================================================
+// CUDA
+// ============================================================================
+#define USE_CUDA_LBM  // Use CUDA backend for LBM + freesurface compute
+
+// ============================================================================
 // Output
 // ============================================================================
 #define ENABLE_VTK_OUTPUT 0  // 1 = write VTK files, 0 = disable VTK output

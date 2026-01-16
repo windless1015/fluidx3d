@@ -4,6 +4,9 @@
 #include "../core/opencl.hpp"
 #include "../core/units.hpp"
 #include "../app/info.hpp"
+#ifdef USE_CUDA_LBM
+#include "../cuda/lbm_cuda.hpp"
+#endif // USE_CUDA_LBM
 
 
 uint bytes_per_cell_host(); // returns the number of Bytes per cell allocated in host memory
@@ -42,6 +45,10 @@ private:
 	Memory<float> massex; // excess mass; used for mass conservation
 #endif // SURFACE
 
+#ifdef USE_CUDA_LBM
+	CudaLBMBackend* cuda_backend = nullptr;
+#endif // USE_CUDA_LBM
+
 	void allocate(Device& device); // allocate all memory for data fields on host and device and set up kernels
 	string device_defines() const; // returns preprocessor constants for embedding in OpenCL C code
 
@@ -55,6 +62,7 @@ public:
 #endif // SURFACE
 
 	LBM_Domain(const Device_Info& device_info, const uint Nx, const uint Ny, const uint Nz, const uint Dx, const uint Dy, const uint Dz, const int Ox, const int Oy, const int Oz, const float nu, const float fx, const float fy, const float fz, const float sigma); // compiles OpenCL C code and allocates memory
+	~LBM_Domain();
 
 	void enqueue_initialize(); // write all data fields to device and call kernel_initialize
 	void enqueue_stream_collide(); // call kernel_stream_collide to perform one LBM time step
@@ -62,6 +70,9 @@ public:
 
 #ifdef SURFACE
 	float compute_total_mass() {
+#ifdef USE_CUDA_LBM
+		sync_cuda_to_opencl_render();
+#endif // USE_CUDA_LBM
 		phi.read_from_device();
 		rho.read_from_device();
 		flags.read_from_device();
@@ -83,6 +94,7 @@ public:
 	void enqueue_surface_flag_transition();
 	void enqueue_surface_phi_recompute();
 #endif // SURFACE
+	void sync_cuda_to_opencl_render(); // sync CUDA compute fields to OpenCL render buffers
 	void increment_time_step(const uint steps=1u); // increment time step
 	void reset_time_step(); // reset time step
 	void finish_queue();
@@ -314,8 +326,12 @@ public:
 // #ifndef UPDATE_FIELDS
 			for(uint domain=0u; domain<D; domain++) lbm->lbm_domain[domain]->enqueue_update_fields(); // make sure data in device memory is up-to-date
 // #endif // UPDATE_FIELDS
+#ifdef USE_CUDA_LBM
+			for(uint domain=0u; domain<D; domain++) lbm->lbm_domain[domain]->sync_cuda_to_opencl_render();
+#else
 			for(uint domain=0u; domain<D; domain++) buffers[domain]->enqueue_read_from_device();
 			for(uint domain=0u; domain<D; domain++) buffers[domain]->finish_queue();
+#endif // USE_CUDA_LBM
 		}
 		inline void write_to_device() {
 			for(uint domain=0u; domain<D; domain++) buffers[domain]->enqueue_write_to_device();
