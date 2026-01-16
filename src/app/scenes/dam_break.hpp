@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../lbm_api/LBMModel.h"
+#include "../../core/defines.hpp"
 
 struct DamBreakParams {
 	uint nx = 128u;

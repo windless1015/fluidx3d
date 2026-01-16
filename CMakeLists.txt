@@ -73,6 +73,7 @@ set(APP_SOURCES
     src/app/scenes/dam_break.cpp
     src/app/runtime/sim_loop.cpp
     src/app/runtime/sim_modules.cpp
+    src/lbm_api/LBMCore.cpp
 )
 set(APP_HEADERS
     src/app/info.hpp

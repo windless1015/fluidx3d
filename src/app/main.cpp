@@ -1,6 +1,10 @@
 #include "info.hpp"
 #include "setup.hpp"
 #include "app_model.hpp"
+#ifdef GRAPHICS
+#include "../core/units.hpp"
+#include "../render/graphics.hpp"
+#endif
 
 lbm::LBMCore* app_core = nullptr;
 

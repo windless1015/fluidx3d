@@ -1,4 +1,7 @@
 #include "info.hpp"
+#ifdef GRAPHICS
+#include "../render/graphics.hpp"
+#endif
 
 Info info;
 

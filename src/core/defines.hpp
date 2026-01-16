@@ -35,7 +35,7 @@
 // ============================================================================
 // CUDA
 // ============================================================================
-#define USE_CUDA_LBM  // Use CUDA backend for LBM + freesurface compute
+// #define USE_CUDA_LBM  // Use CUDA backend for LBM + freesurface compute
 
 // ============================================================================
 // Output

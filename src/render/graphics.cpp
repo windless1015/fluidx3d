@@ -468,7 +468,7 @@ int main(int argc, char* argv[]) {
 
 	GlfwWindow window;
 	uint width = 0u, height = 0u, fps_limit = 60u;
-	if(!window.initialize_fullscreen(WINDOW_NAME, width, height, fps_limit)) return 1;
+	if(!window.initialize_windowed(WINDOW_NAME, width, height, fps_limit)) return 1;
 	camera = Camera(width, height, fps_limit);
 	window.set_cursor_visible(camera.lockmouse);
 	window.set_cursor_pos(width/2.0, height/2.0);
@@ -483,6 +483,13 @@ int main(int argc, char* argv[]) {
 	static bool mouse_right_down = false;
 	window.set_callbacks({
 		[&](int key, bool pressed) {
+			if(key==GLFW_KEY_ESCAPE && pressed) {
+				camera.lockmouse = false;
+				window.set_cursor_visible(true);
+				running = false;
+				glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
+				return;
+			}
 			const int k = key_glfw_to_internal(key);
 			if(k==0) return;
 			camera.set_key_state(k, pressed);

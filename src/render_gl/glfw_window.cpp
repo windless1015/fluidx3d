@@ -76,6 +76,54 @@ bool GlfwWindow::initialize_fullscreen(const char* title, unsigned int& width, u
 	return true;
 }
 
+bool GlfwWindow::initialize_windowed(const char* title, unsigned int& width, unsigned int& height, unsigned int& fps_limit) {
+	if(!glfwInit()) {
+		print_error("Failed to initialize GLFW.");
+		return false;
+	}
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
+	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+	if(mode==nullptr) {
+		print_error("Failed to query GLFW video mode.");
+		return false;
+	}
+	if(width==0u || height==0u) {
+		const unsigned int side = (unsigned int)min(mode->width, mode->height);
+		width = side;
+		height = side;
+	}
+	fps_limit = (unsigned int)mode->refreshRate;
+
+	window = glfwCreateWindow((int)width, (int)height, title, nullptr, nullptr);
+	if(window==nullptr) {
+		print_error("Failed to create GLFW window.");
+		return false;
+	}
+	glfwMakeContextCurrent(window);
+	glfwSwapInterval(1);
+	if(!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+		print_error("Failed to initialize GLAD.");
+		return false;
+	}
+	if(monitor!=nullptr && mode!=nullptr) {
+		const int xpos = (mode->width-(int)width)/2;
+		const int ypos = (mode->height-(int)height)/2;
+		glfwSetWindowPos(window, xpos, ypos);
+	}
+
+	glfwSetWindowUserPointer(window, this);
+	glfwSetKeyCallback(window, on_key_callback);
+	glfwSetCursorPosCallback(window, on_cursor_pos_callback);
+	glfwSetScrollCallback(window, on_scroll_callback);
+	glfwSetMouseButtonCallback(window, on_mouse_button_callback);
+	return true;
+}
+
 void GlfwWindow::set_callbacks(const GlfwCallbacks& callbacks) {
 	this->callbacks = callbacks;
 }

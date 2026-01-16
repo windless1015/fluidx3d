@@ -15,6 +15,7 @@ struct GlfwCallbacks {
 class GlfwWindow {
 public:
 	bool initialize_fullscreen(const char* title, unsigned int& width, unsigned int& height, unsigned int& fps_limit);
+	bool initialize_windowed(const char* title, unsigned int& width, unsigned int& height, unsigned int& fps_limit);
 	void set_callbacks(const GlfwCallbacks& callbacks);
 	void poll();
 	void swap();
