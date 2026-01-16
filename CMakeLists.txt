@@ -24,6 +24,12 @@ set(CMAKE_INTERMEDIATE_DIRECTORY ${CMAKE_SOURCE_DIR}/temp)
 # Core 模块 (头文件)
 set(CORE_HEADERS
     src/core/defines.hpp
+    src/core/Config.h
+    src/core/IModel.h
+    src/core/FieldHandle.h
+    src/core/IVelocityFieldProvider.h
+    src/core/ICollisionGeometry.h
+    src/core/ModelRegistry.h
     src/core/opencl.hpp
     src/core/units.hpp
     src/core/utilities.hpp
@@ -93,6 +99,7 @@ set(APP_HEADERS
 
 # 合并所有源文件
 set(ALL_SOURCES
+    src/core/ModelRegistry.cpp
     ${LBM_SOURCES}
     ${RENDER_SOURCES}
     ${RENDER_GL_SOURCES}
