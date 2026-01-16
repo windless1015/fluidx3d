@@ -74,11 +74,19 @@ set(APP_SOURCES
     src/app/main.cpp
     src/app/info.cpp
     src/app/setup.cpp
+    src/app/scenes/dam_break.cpp
+    src/app/runtime/sim_loop.cpp
 )
 set(APP_HEADERS
     src/app/info.hpp
     src/app/app_graphics.hpp
     src/app/setup.hpp
+    src/app/scenes/dam_break.hpp
+    src/app/runtime/sim_loop.hpp
+    src/lbm_api/LBMConfig.h
+    src/lbm_api/LBMCore.h
+    src/lbm_api/FreeSurfaceModule.h
+    src/lbm_api/LBMModel.h
 )
 
 # 合并所有源文件
